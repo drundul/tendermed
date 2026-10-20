@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Гарантируем корректный импорт модулей app независимо от того, как запущен Streamlit
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 import streamlit as st
 
 # Настройка страницы

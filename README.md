@@ -83,7 +83,7 @@ Tender/
 │   └── utils/
 │       └── export.py         # Экспорт отчета в Markdown
 ├── ui/
-│   └── app.py                # Интерфейс Streamlit (Светофор + Дашборд)
+│   └── streamlit_app.py      # Интерфейс Streamlit (Светофор + Дашборд)
 ├── sample_data/
 │   └── sample_med_tender.md  # Эталонная закупка УЗИ с заложенными ловушками
 ├── tests/                    # Юнит- и интеграционные тесты

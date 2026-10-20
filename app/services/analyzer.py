@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pydantic import BaseModel, Field
 
 from app.models.schemas import FullAnalysisReport
@@ -32,10 +32,19 @@ class TenderAnalyzerPipeline:
         force_mock: bool = False,
     ) -> PipelineExecutionResult:
         """Сквозная обработка одного загруженного файла (архив ZIP, PDF, DOCX)."""
+        return self.process_files([(filename, file_bytes)], model_name=model_name, force_mock=force_mock)
+
+    def process_files(
+        self,
+        files: List[Tuple[str, bytes]],
+        model_name: Optional[str] = None,
+        force_mock: bool = False,
+    ) -> PipelineExecutionResult:
+        """Сквозная обработка списка файлов (несколько документов или архивов)."""
         start_time = time.time()
 
         # 1. Извлечение файлов и текстов
-        ext_result = DocumentExtractor.extract_from_bytes(filename, file_bytes)
+        ext_result = DocumentExtractor.extract_from_multiple_files(files)
         if not ext_result.documents:
             # Если документов нет или ошибка формата
             mock_report = self.llm_service.analyze_tender(

@@ -39,6 +39,24 @@ class DocumentExtractor:
     SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".txt", ".md"}
 
     @classmethod
+    def extract_from_multiple_files(cls, files: List[Tuple[str, bytes]]) -> ExtractionResult:
+        """Извлекает текст из списка файлов (архивы или отдельные документы)."""
+        all_docs: List[ExtractedDocument] = []
+        all_warnings: List[str] = []
+
+        for fname, fbytes in files:
+            res = cls.extract_from_bytes(fname, fbytes)
+            all_docs.extend(res.documents)
+            all_warnings.extend(res.warnings)
+
+        return ExtractionResult(
+            documents=all_docs,
+            total_documents=len(all_docs),
+            total_chars=sum(d.char_count for d in all_docs),
+            warnings=all_warnings
+        )
+
+    @classmethod
     def extract_from_bytes(cls, filename: str, file_bytes: bytes) -> ExtractionResult:
         """Извлекает текст из переданных байтов файла (архив или одиночный файл)."""
         lower_name = filename.lower()

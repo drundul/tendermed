@@ -178,11 +178,14 @@ st.markdown(
 col_upload, col_demo = st.columns([3, 1])
 
 with col_upload:
-    uploaded_file = st.file_uploader(
-        "Перетащите архив извещения (.zip) или отдельные файлы (.pdf, .docx, .txt)",
+    uploaded_files = st.file_uploader(
+        "Перетащите файлы закупки (.zip архив или сразу несколько файлов .docx / .pdf)",
         type=["zip", "pdf", "docx", "txt", "md"],
-        help="Поддерживаются архивы ЕИС с закупочной документацией или отдельные файлы ТЗ и контракта.",
+        accept_multiple_files=True,
+        help="Вы можете выбрать сразу несколько файлов с сайта (ТЗ, проект контракта, инфокарту) или один ZIP-архив.",
     )
+    if uploaded_files:
+        st.caption(f"📁 Выбрано файлов: {len(uploaded_files)} ({', '.join(f.name for f in uploaded_files[:3])}{'...' if len(uploaded_files) > 3 else ''})")
 
 with col_demo:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -220,14 +223,14 @@ if load_sample_btn:
             st.error(f"❌ Не удалось выполнить живой запрос к OpenAI: {str(err)}")
             st.info("💡 Рекомендация: Проверьте валидность API-ключа, наличие VPN/прокси (если запрос блокируется по региону) или выберите другую модель.")
 
-elif uploaded_file is not None:
+elif uploaded_files:
     analyze_btn = st.button("🚀 Начать ИИ-экспертизу закупки", type="primary", use_container_width=True)
     if analyze_btn:
         progress_placeholder = st.empty()
         with progress_placeholder.container():
             with st.status("Выполняется многоуровневый анализ документации...", expanded=True) as status:
-                st.write("📦 Распаковка и извлечение текстового слоя...")
-                file_bytes = uploaded_file.getvalue()
+                st.write(f"📦 Чтение и распаковка {len(uploaded_files)} файлов...")
+                files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
                 
                 st.write("📑 Классификация документов (ТЗ / Проект контракта / Информационная карта)...")
                 st.write("⚖️ Юридический аудит штрафов и неустоек (ПП РФ № 1042)...")
@@ -235,9 +238,8 @@ elif uploaded_file is not None:
                 st.write("🔍 Поиск признаков ограничения конкуренции («заточек» под бренд)...")
 
                 try:
-                    result = pipeline.process_file_bytes(
-                        filename=uploaded_file.name,
-                        file_bytes=file_bytes,
+                    result = pipeline.process_files(
+                        files=files_payload,
                         model_name=selected_model,
                         force_mock=demo_mode,
                     )

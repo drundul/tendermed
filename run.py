@@ -14,7 +14,7 @@ def main():
     
     env = os.environ.copy()
     project_root = os.path.dirname(os.path.abspath(__file__))
-    env["PYTHONPATH"] = project_root + os.pathpsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
 
     cmd = [sys.executable, "-m", "streamlit", "run", app_path]
     try:

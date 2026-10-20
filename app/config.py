@@ -20,11 +20,11 @@ class Settings(BaseSettings):
     openai_base_url: Optional[str] = Field(default=None, alias="OPENAI_BASE_URL")
 
     # Модели OpenAI для двухфазного пайплайна
-    # Быстрая модель для фильтрации и таблиц (gpt-4.1-mini, gpt-4o-mini, gpt-5-mini)
-    openai_model_fast: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL_FAST")
+    # Быстрая модель по умолчанию (gpt-5.4-mini, лимит 2.5 млн токенов/день)
+    openai_model_fast: str = Field(default="gpt-5.4-mini", alias="OPENAI_MODEL_FAST")
 
-    # Интеллектуальная модель для глубокого риск-аудита и генерации запросов (gpt-4.1, gpt-4o, gpt-5)
-    openai_model_smart: str = Field(default="gpt-4.1", alias="OPENAI_MODEL_SMART")
+    # Интеллектуальная модель для глубокого риск-аудита (gpt-5.4, gpt-5.2)
+    openai_model_smart: str = Field(default="gpt-5.4-mini", alias="OPENAI_MODEL_SMART")
 
     # Режим демонстрации (Mock) без вызова внешних API
     mock_mode: bool = Field(default=False, alias="MOCK_MODE")

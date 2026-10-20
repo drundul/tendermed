@@ -122,10 +122,14 @@ with st.sidebar:
 
     # Выбор модели
     available_models = [
+        "gpt-5.4-mini",
+        "gpt-5.4",
+        "gpt-5.2",
+        "gpt-5-mini",
+        "gpt-4.1-mini",
+        "gpt-4.1",
         "gpt-4o",
         "gpt-4o-mini",
-        "gpt-4.1",
-        "gpt-4.1-mini",
         "o3-mini",
         "o4-mini",
         "Ввести модель вручную...",
@@ -134,10 +138,10 @@ with st.sidebar:
         "Аналитическая модель",
         options=available_models,
         index=0,
-        help="Модели gpt-4o и gpt-4.1 обеспечивают максимальную глубину юридического и технического аудита.",
+        help="gpt-5.4-mini — идеальна по умолчанию (быстрая, точная, квота 2.5 млн токенов/день). gpt-5.4 и gpt-5.2 — флагманский глубокий анализ.",
     )
     if model_choice == "Ввести модель вручную...":
-        selected_model = st.text_input("Название модели", value="gpt-4o")
+        selected_model = st.text_input("Название модели", value="gpt-5.4-mini")
     else:
         selected_model = model_choice
 

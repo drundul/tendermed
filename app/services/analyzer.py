@@ -21,8 +21,8 @@ class PipelineExecutionResult(BaseModel):
 class TenderAnalyzerPipeline:
     """Главный оркестратор сквозного анализа тендерной документации."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.llm_service = LLMService(api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        self.llm_service = LLMService(api_key=api_key, base_url=base_url)
 
     def process_file_bytes(
         self,

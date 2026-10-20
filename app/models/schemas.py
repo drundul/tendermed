@@ -95,3 +95,4 @@ class FullAnalysisReport(BaseModel):
     )
     analysis_timestamp: Optional[str] = Field(default=None, description="Время проведения анализа")
     model_used: Optional[str] = Field(default=None, description="Использованная модель ИИ")
+    is_mock: bool = Field(default=False, description="Признак демонстрационного эталона")

@@ -23,9 +23,20 @@ logger = logging.getLogger(__name__)
 class LLMService:
     """Сервис взаимодействия с OpenAI API с поддержкой Structured Outputs и Mock-режима."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.openai_api_key
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        raw_key = api_key if api_key is not None else settings.openai_api_key
+        self.api_key = raw_key.strip() if (raw_key and raw_key != "your_openai_api_key_here") else None
+        
+        raw_url = base_url if base_url is not None else settings.openai_base_url
+        self.base_url = raw_url.strip() if (raw_url and raw_url.strip()) else None
+
+        if self.api_key:
+            client_kwargs = {"api_key": self.api_key}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
+            self.client = OpenAI(**client_kwargs)
+        else:
+            self.client = None
 
     def analyze_tender(
         self,
@@ -36,12 +47,21 @@ class LLMService:
         """Проводит анализ документации через OpenAI или возвращает демонстрационный отчет."""
         effective_model = model_name or settings.openai_model_smart
 
-        # Если включен демо-режим или нет API-ключа — отдаем эталонный мок
-        if force_mock or settings.mock_mode or not self.client:
-            logger.info("Возврат эталонного демонстрационного отчета (Mock Mode).")
+        # 1. Если принудительно запрошен демо-режим:
+        if force_mock:
+            logger.info("Возврат эталонного демонстрационного отчета (force_mock=True).")
             return self._generate_mock_report()
 
+        # 2. Если демо-режим выключен, но нет API-ключа:
+        if not self.client:
+            raise ValueError(
+                "API-ключ OpenAI не найден или пуст! Пожалуйста, укажите действующий ключ в боковой панели "
+                "слева или включите 'Демо-режим'."
+            )
+
+        # 3. Реальный запрос к OpenAI API:
         try:
+            logger.info(f"Запуск живого анализа через OpenAI модель '{effective_model}'...")
             prompt = USER_PROMPT_TEMPLATE.format(context_documents=context_text[:120000])
 
             # Вызов Structured Outputs через бета-парсер Pydantic
@@ -58,18 +78,16 @@ class LLMService:
             report = response.choices[0].message.parsed
             if report:
                 report.analysis_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                report.model_used = effective_model
+                report.model_used = f"OpenAI {effective_model}"
+                report.is_mock = False
                 return report
             else:
-                logger.warning("Модель не вернула распарсенный объект, переключение на резервный мок.")
-                return self._generate_mock_report()
+                raise RuntimeError("Модель OpenAI не вернула структурированный ответ.")
 
         except Exception as e:
             logger.error(f"Ошибка при вызове OpenAI API ({effective_model}): {str(e)}")
-            # Если возникла ошибка API (например, некорректный ключ или таймаут) — возвращаем информативный отчет
-            mock = self._generate_mock_report()
-            mock.verdict_summary = f"[Предупреждение: вызов API завершился ошибкой '{str(e)}'. Показан эталонный аналитический образец]."
-            return mock
+            # Пробрасываем реальную ошибку, чтобы пользователь увидел конкретную причину
+            raise RuntimeError(f"Ошибка OpenAI API при вызове модели '{effective_model}': {str(e)}") from e
 
     @staticmethod
     def _generate_mock_report() -> FullAnalysisReport:
@@ -77,6 +95,7 @@ class LLMService:
         return FullAnalysisReport(
             verdict=TrafficLightVerdict.RED,
             risk_score=82,
+            is_mock=True,
             verdict_summary=(
                 "КРИТИЧЕСКИЙ РИСК: Закупка содержит признаки преднамеренной заточки под конкретного поставщика оборудования Mindray Resona 7. "
                 "Установлен невыполнимый срок поставки (5 календарных дней для высокотехнологичной медтехники) и кабальный размер пени "
@@ -196,5 +215,5 @@ class LLMService:
                 ),
             ],
             analysis_timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            model_used="gpt-4.1 (Medical Audit Core)",
+            model_used="Эталонный образец (Демо-режим)",
         )

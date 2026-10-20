@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # API-ключ OpenAI
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
 
+    # Базовый URL API OpenAI (для прокси или зеркал, напр. https://api.proxyapi.ru/openai/v1)
+    openai_base_url: Optional[str] = Field(default=None, alias="OPENAI_BASE_URL")
+
     # Модели OpenAI для двухфазного пайплайна
     # Быстрая модель для фильтрации и таблиц (gpt-4.1-mini, gpt-4o-mini, gpt-5-mini)
     openai_model_fast: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL_FAST")

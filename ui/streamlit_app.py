@@ -104,32 +104,57 @@ with st.sidebar:
         "OpenAI API Key",
         value=env_key if env_key != "your_openai_api_key_here" else "",
         type="password",
-        help="Введите ваш ключ OpenAI с доступом к моделям GPT-4o / GPT-4.1",
+        help="Введите ваш ключ OpenAI (начинается с sk-...)",
+    )
+    if api_key_input.strip():
+        st.caption("🟢 API-ключ указан")
+    else:
+        st.caption("⚪ Ключ не указан (доступен Демо-режим)")
+
+    # Базовый URL (прокси / зеркало)
+    env_url = settings.openai_base_url or ""
+    base_url_input = st.text_input(
+        "Base URL (опционально для прокси)",
+        value=env_url,
+        placeholder="https://api.openai.com/v1",
+        help="Укажите, если используете прокси или зеркало (напр. https://api.proxyapi.ru/openai/v1 или https://openrouter.ai/api/v1)",
     )
 
     # Выбор модели
     available_models = [
-        "gpt-4.1",
         "gpt-4o",
-        "gpt-4.1-mini",
         "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
         "o3-mini",
         "o4-mini",
+        "Ввести модель вручную...",
     ]
-    default_model_index = 0 if "gpt-4.1" in available_models else 1
-    selected_model = st.selectbox(
+    model_choice = st.selectbox(
         "Аналитическая модель",
         options=available_models,
-        index=default_model_index,
-        help="Модели gpt-4.1 и gpt-4o обеспечивают максимальную глубину юридического и технического аудита.",
+        index=0,
+        help="Модели gpt-4o и gpt-4.1 обеспечивают максимальную глубину юридического и технического аудита.",
     )
+    if model_choice == "Ввести модель вручную...":
+        selected_model = st.text_input("Название модели", value="gpt-4o")
+    else:
+        selected_model = model_choice
 
     # Демо-режим
     demo_mode = st.toggle(
         "🧪 Демо-режим (Mock)",
-        value=settings.mock_mode or not bool(api_key_input.strip()),
+        value=not bool(api_key_input.strip()),
         help="Включение показа эталонного отчета по закупке УЗИ-аппарата без обращения к внешним API.",
     )
+
+    if demo_mode:
+        st.info("ℹ️ **Режим:** ДЕМО (работает на эталонных данных, токены не расходуются)")
+    else:
+        if api_key_input.strip():
+            st.success(f"🤖 **Режим:** ЖИВОЙ ИИ (модель: `{selected_model}`)")
+        else:
+            st.warning("⚠️ Для отключения демо-режима введите OpenAI API Key выше!")
 
     st.divider()
     st.subheader("📚 Нормативная база")
@@ -163,28 +188,37 @@ with col_demo:
     st.markdown("<br>", unsafe_allow_html=True)
     load_sample_btn = st.button("⚡ Загрузить эталон (УЗИ Resona 7)", use_container_width=True)
 
-# Запуск анализа
-pipeline = TenderAnalyzerPipeline(api_key=api_key_input.strip() if api_key_input else None)
+# Инициализация пайплайна с переданными ключами
+clean_key = api_key_input.strip() if api_key_input else None
+clean_url = base_url_input.strip() if base_url_input else None
+pipeline = TenderAnalyzerPipeline(api_key=clean_key, base_url=clean_url)
 
 if load_sample_btn:
-    with st.spinner("Формирование экспертного заключения по эталонному тендеру..."):
-        # Загружаем эталонный образец
-        sample_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sample_data", "sample_med_tender.md")
-        sample_bytes = b""
-        if os.path.exists(sample_path):
-            with open(sample_path, "rb") as f:
-                sample_bytes = f.read()
-        else:
-            sample_bytes = "Техническое задание на поставку УЗИ системы".encode("utf-8")
+    sample_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sample_data", "sample_med_tender.md")
+    sample_bytes = b""
+    if os.path.exists(sample_path):
+        with open(sample_path, "rb") as f:
+            sample_bytes = f.read()
+    else:
+        sample_bytes = "Техническое задание на поставку УЗИ системы".encode("utf-8")
 
-        result = pipeline.process_file_bytes(
-            filename="Эталон_Закупка_УЗИ_44ФЗ.md",
-            file_bytes=sample_bytes,
-            model_name=selected_model,
-            force_mock=True,
-        )
-        st.session_state.analysis_result = result
-        st.success("Эталонный комплект документации успешно проанализирован!")
+    action_label = "Демонстрационный разбор эталона..." if demo_mode else f"Живой анализ эталона через OpenAI ({selected_model})..."
+    with st.spinner(action_label):
+        try:
+            result = pipeline.process_file_bytes(
+                filename="Эталон_Закупка_УЗИ_44ФЗ.md",
+                file_bytes=sample_bytes,
+                model_name=selected_model,
+                force_mock=demo_mode,
+            )
+            st.session_state.analysis_result = result
+            if demo_mode:
+                st.success("Эталонный комплект документации успешно загружен в Демо-режиме!")
+            else:
+                st.success(f"Живой анализ успешно выполнен моделью {selected_model} за {result.execution_time_seconds} с!")
+        except Exception as err:
+            st.error(f"❌ Не удалось выполнить живой запрос к OpenAI: {str(err)}")
+            st.info("💡 Рекомендация: Проверьте валидность API-ключа, наличие VPN/прокси (если запрос блокируется по региону) или выберите другую модель.")
 
 elif uploaded_file is not None:
     analyze_btn = st.button("🚀 Начать ИИ-экспертизу закупки", type="primary", use_container_width=True)
@@ -200,15 +234,20 @@ elif uploaded_file is not None:
                 st.write("🩺 Проверка медицинского комплаенса (РУ Росздравнадзора, ПП РФ № 878, КТРУ)...")
                 st.write("🔍 Поиск признаков ограничения конкуренции («заточек» под бренд)...")
 
-                result = pipeline.process_file_bytes(
-                    filename=uploaded_file.name,
-                    file_bytes=file_bytes,
-                    model_name=selected_model,
-                    force_mock=demo_mode,
-                )
-                st.session_state.analysis_result = result
-                status.update(label="Анализ успешно завершен!", state="complete", expanded=False)
-        st.success(f"Анализ завершен за {result.execution_time_seconds} сек. Обработано {result.total_documents} документов ({result.total_characters} символов).")
+                try:
+                    result = pipeline.process_file_bytes(
+                        filename=uploaded_file.name,
+                        file_bytes=file_bytes,
+                        model_name=selected_model,
+                        force_mock=demo_mode,
+                    )
+                    st.session_state.analysis_result = result
+                    status.update(label="Анализ успешно завершен!", state="complete", expanded=False)
+                    st.success(f"Анализ завершен за {result.execution_time_seconds} сек. Обработано {result.total_documents} документов ({result.total_characters} символов).")
+                except Exception as err:
+                    status.update(label="Ошибка анализа!", state="error", expanded=True)
+                    st.error(f"❌ Ошибка вызова OpenAI API: {str(err)}")
+                    st.info("💡 Подсказка: Проверьте правильность API-ключа или включите 'Демо-режим' в боковой панели слева.")
 
 
 # ----------------- ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ -----------------
@@ -240,6 +279,11 @@ if res:
         <p style="font-size: 16px; margin: 8px 0 0 0; line-height: 1.5; color: white;"><b>Резюме для руководителя:</b> {report.verdict_summary}</p>
     </div>
     """, unsafe_allow_html=True)
+
+    if getattr(report, "is_mock", False) or "демо" in (report.model_used or "").lower():
+        st.info("🧪 **Источник анализа:** ДЕМО-ОБРАЗЕЦ (без списания токенов OpenAI)")
+    else:
+        st.success(f"🤖 **Источник анализа:** ЖИВОЙ ИИ-АНАЛИЗ • Модель: `{report.model_used}` • Время: `{res.execution_time_seconds} сек`")
 
     # 2. ПАРАМЕТРЫ КОНТРАКТА (МЕТРИКИ)
     m1, m2, m3, m4 = st.columns(4)

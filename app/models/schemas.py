@@ -50,9 +50,17 @@ class MedComplianceAudit(BaseModel):
 
 
 class TenderSummary(BaseModel):
-    """Базовые параметры закупки, извлеченные из документации."""
+    """Базовые параметры закупки и реквизиты сторон, извлеченные из документации."""
     purchase_subject: str = Field(description="Наименование объекта закупки")
     law_type: str = Field(default="44-ФЗ", description="Федеральный закон (44-ФЗ или 223-ФЗ)")
+    notice_number: Optional[str] = Field(default=None, description="Номер извещения закупки (например, 0859200001126012552)")
+    ikz: Optional[str] = Field(default=None, description="Идентификационный код закупки (ИКЗ)")
+    etp_name: Optional[str] = Field(default=None, description="Электронная торговая площадка (РТС-тендер, Сбербанк-АСТ, ЕЭТП и др.)")
+    customer_name: Optional[str] = Field(default=None, description="Полное наименование заказчика (ЛПУ/учреждения)")
+    customer_inn: Optional[str] = Field(default=None, description="ИНН Заказчика")
+    customer_kpp: Optional[str] = Field(default=None, description="КПП Заказчика")
+    customer_address: Optional[str] = Field(default=None, description="Юридический и/или фактический адрес доставки/заказчика")
+    customer_signer: Optional[str] = Field(default=None, description="Уполномоченное лицо заказчика (должность, ФИО, основание полномочий из преамбулы)")
     nmck_rubles: Optional[float] = Field(default=None, description="Начальная (максимальная) цена контракта в рублях")
     delivery_deadline: Optional[str] = Field(default=None, description="Срок и график поставки оборудования")
     delivery_place: Optional[str] = Field(default=None, description="Место поставки (город, ЛПУ)")
@@ -63,21 +71,34 @@ class TenderSummary(BaseModel):
 
 
 class EquipmentItem(BaseModel):
-    """Позиция медицинского оборудования из спецификации ТЗ."""
-    name: str = Field(description="Наименование оборудования")
+    """Позиция медицинского оборудования из спецификации ТЗ с глубоким аудитом заточек."""
+    name: str = Field(description="Наименование оборудования/медизделия")
     quantity: Optional[str] = Field(default="1 шт.", description="Количество")
-    key_specs: List[str] = Field(default_factory=list, description="Ключевые технические характеристики")
+    ktru_code: Optional[str] = Field(default=None, description="Код позиции КТРУ (если указан)")
+    key_specs: List[str] = Field(default_factory=list, description="Ключевые технические характеристики из ТЗ")
     potential_bias_warning: Optional[str] = Field(
         default=None, 
-        description="Признак заточки под конкретного производителя/модель (если обнаружен)"
+        description="Краткий индикатор заточки (например: Заточка под Medtronic / Abbott)"
+    )
+    detected_brand_bias: Optional[str] = Field(
+        default=None,
+        description="Подробный экспертный разбор скрытой заточки: какие именно параметры (вес до грамма, габариты в мм, алгоритмы) указывают на конкретного производителя и исключают аналоги"
+    )
+    suggested_neutral_specs: Optional[str] = Field(
+        default=None,
+        description="Рекомендации поставщику: какие характеристики оспорить в запросе для допуска аналогов"
     )
 
 
 class ClarificationRequest(BaseModel):
-    """Черновик официального запроса на разъяснение положений извещения в ЕИС."""
+    """Официальный юридический запрос на разъяснение положений извещения в ЕИС."""
     subject: str = Field(description="Краткая суть спорного пункта ТЗ или контракта")
-    justification: str = Field(description="Нормативно-правовое обоснование (ст. 33 44-ФЗ, 135-ФЗ, ПП 1042)")
-    draft_text: str = Field(description="Готовый текст запроса к заказчику для подачи через электронную площадку")
+    recipient_header: str = Field(
+        default="",
+        description="Официальная шапка запроса с реквизитами Заказчика (Кому, Куда, В лице кого, Извещение №, ЭТП)"
+    )
+    justification: str = Field(description="Нормативно-правовое обоснование (ст. 33, ст. 34, ст. 65 44-ФЗ, 135-ФЗ, ПП 1042)")
+    draft_text: str = Field(description="Полный официальный текст письма-запроса, готовый к подаче на ЭТП")
 
 
 class FullAnalysisReport(BaseModel):

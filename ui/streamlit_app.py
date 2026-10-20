@@ -301,12 +301,30 @@ if res:
         guar_str = f"{report.summary.contract_guarantee_percent}%" if report.summary.contract_guarantee_percent else "Не установлено"
         st.metric("Обеспечение контракта", guar_str)
 
+    # 2.1. ЮРИДИЧЕСКИЕ РЕКВИЗИТЫ ЗАКАЗЧИКА И ПРОЦЕДУРЫ
+    with st.expander("🏛️ Юридические реквизиты Заказчика и процедуры", expanded=True):
+        c_r1, c_r2 = st.columns(2)
+        with c_r1:
+            st.markdown(f"**Заказчик:** {report.summary.customer_name or 'Уточняется в контракте'}")
+            if report.summary.customer_signer:
+                st.markdown(f"**В лице:** {report.summary.customer_signer}")
+            if report.summary.customer_inn:
+                st.markdown(f"**ИНН / КПП:** `{report.summary.customer_inn}` / `{report.summary.customer_kpp or 'Н/Д'}`")
+            st.markdown(f"**Адрес / Место поставки:** {report.summary.customer_address or report.summary.delivery_place or 'Не указан'}")
+        with c_r2:
+            st.markdown(f"**Номер извещения:** `{report.summary.notice_number or 'По документации'}`")
+            if report.summary.ikz:
+                st.markdown(f"**ИКЗ:** `{report.summary.ikz}`")
+            if report.summary.etp_name:
+                st.markdown(f"**Электронная площадка (ЭТП):** {report.summary.etp_name}")
+            st.markdown(f"**Законодательство:** {report.summary.law_type}")
+
     # 3. ВКЛАДКИ ДЕТАЛЬНОГО АНАЛИЗА
     tab_risks, tab_med, tab_eq, tab_inquiry, tab_export = st.tabs([
         f"🚨 Матрица рисков ({len(report.risks)})",
         "🩺 Медицинский комплаенс",
-        "🔬 Спецификация и заточки",
-        f"📝 Запросы разъяснений ({len(report.clarification_requests)})",
+        f"🔬 Спецификация и заточки ({len(report.equipment)})",
+        f"📝 Официальные запросы в ЕИС ({len(report.clarification_requests)})",
         "💾 Экспорт отчета",
     ])
 
@@ -386,39 +404,50 @@ if res:
             st.write(f"- **Монтаж, пусконаладка и инструктаж:** {'Да' if report.med_compliance.installation_and_training else 'Нет'}")
             st.write(f"- **Гарантийный срок:** {report.med_compliance.warranty_period_months or 'Не указан'} мес.")
 
-    # Вкладка 3: Спецификация оборудования
+    # Вкладка 3: Спецификация оборудования и заточки
     with tab_eq:
-        st.subheader("Анализ позиций оборудования и детекция 'заточек'")
+        st.subheader("Анализ позиций оборудования и детекция скрытых заточек")
+        st.caption("ИИ выявляет узкие диапазоны веса (до грамма), габариты (в мм) и запатентованные алгоритмы, исключающие аналоги.")
+        
         if not report.equipment:
             st.info("Позиции оборудования не были выделены из загруженного фрагмента.")
         else:
-            for eq in report.equipment:
-                st.markdown(f"### {eq.name}")
-                st.caption(f"Количество: {eq.quantity or '1 шт.'}")
-                
-                if eq.potential_bias_warning:
-                    st.error(f"⚠️ **ВНИМАНИЕ НА ЗАТОЧКУ:** {eq.potential_bias_warning}")
-                
-                st.markdown("**Ключевые технические требования ТЗ:**")
-                for s in eq.key_specs:
-                    st.markdown(f"- {s}")
-                st.divider()
+            for idx, eq in enumerate(report.equipment, 1):
+                ktru_label = f" • КТРУ: `{eq.ktru_code}`" if eq.ktru_code else ""
+                with st.expander(f"📦 Позиция {idx}: {eq.name} ({eq.quantity or '1 шт.'}){ktru_label}", expanded=True):
+                    
+                    if eq.potential_bias_warning:
+                        st.error(f"⚠️ **ИНДИКАТОР ЗАТОЧКИ:** {eq.potential_bias_warning}")
+                    
+                    if eq.detected_brand_bias:
+                        st.markdown(f"🔬 **ДЕТАЛЬНЫЙ РАЗБОР ЗАТОЧКИ ПОД ПРОИЗВОДИТЕЛЯ:**")
+                        st.warning(eq.detected_brand_bias)
+
+                    if eq.suggested_neutral_specs:
+                        st.markdown(f"💡 **КАК ОСПАРИВАТЬ (РЕКОМЕНДАЦИЯ ПОСТАВЩИКУ):**")
+                        st.info(eq.suggested_neutral_specs)
+
+                    st.markdown("**Ключевые технические требования ТЗ:**")
+                    for s in eq.key_specs:
+                        st.markdown(f"- {s}")
 
     # Вкладка 4: Запросы разъяснений
     with tab_inquiry:
-        st.subheader("Черновики запросов на разъяснение положений в ЕИС")
-        st.caption("Скопируйте подготовленный текст и отправьте заказчику через электронную торговую площадку (ЭТП).")
+        st.subheader("Официальные юридические запросы на разъяснение в ЕИС")
+        st.caption("Сформированы по канонам претензионной практики 44-ФЗ со всеми реквизитами Заказчика. Готовы к копированию и отправке на ЭТП.")
 
         if not report.clarification_requests:
             st.info("Поводов для подачи запроса на разъяснение не обнаружено.")
         else:
             for idx, cr in enumerate(report.clarification_requests, 1):
-                with st.expander(f"Запрос № {idx}: {cr.subject}", expanded=True):
-                    st.markdown(f"**Нормативное обоснование:** {cr.justification}")
+                with st.expander(f"📄 Запрос № {idx}: {cr.subject}", expanded=True):
+                    if cr.recipient_header:
+                        st.markdown(f"**Официальная шапка:**\n```text\n{cr.recipient_header}\n```")
+                    st.markdown(f"⚖️ **Нормативное обоснование:** `{cr.justification}`")
                     st.text_area(
-                        "Текст запроса к заказчику (готов к отправке):",
+                        "Полный официальный текст запроса (готов к отправке):",
                         value=cr.draft_text,
-                        height=200,
+                        height=280,
                         key=f"draft_{idx}",
                     )
 

@@ -19,6 +19,7 @@ st.set_page_config(
 from app.config import settings
 from app.models.schemas import TrafficLightVerdict, RiskSeverity, RiskCategory
 from app.services.analyzer import TenderAnalyzerPipeline
+from app.services.eis_scraper import EISScraper
 from app.utils.export import ReportExporter
 
 
@@ -195,6 +196,25 @@ with col_demo:
     st.markdown("<br>", unsafe_allow_html=True)
     load_sample_btn = st.button("⚡ Загрузить эталон (УЗИ Resona 7)", use_container_width=True)
 
+# --- БЛОК: Автоскачивание по ссылке ЕИС ---
+st.markdown("---")
+st.markdown("#### 🌐 Или вставьте ссылку на закупку с zakupki.gov.ru")
+st.caption(
+    "Система автоматически найдёт страницу «Документы», скачает прикреплённые файлы "
+    "(Обоснование НМЦК, Проект контракта, ТЗ, Инфокарту) и запустит ИИ-анализ."
+)
+col_url, col_fetch = st.columns([4, 1])
+with col_url:
+    eis_url_input = st.text_input(
+        "Ссылка на закупку ЕИС",
+        placeholder="https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=...",
+        label_visibility="collapsed",
+    )
+with col_fetch:
+    fetch_btn = st.button("📥 Скачать и анализировать", use_container_width=True, type="primary")
+
+st.markdown("---")
+
 # Инициализация пайплайна с переданными ключами
 clean_key = api_key_input.strip() if api_key_input else None
 clean_url = base_url_input.strip() if base_url_input else None
@@ -227,6 +247,55 @@ if load_sample_btn:
             st.error(f"❌ Не удалось выполнить живой запрос к OpenAI: {str(err)}")
             st.info("💡 Рекомендация: Проверьте валидность API-ключа, наличие VPN/прокси (если запрос блокируется по региону) или выберите другую модель.")
 
+elif fetch_btn and eis_url_input.strip():
+    # --- Автоматическое скачивание документов по ссылке ЕИС ---
+    url_to_fetch = eis_url_input.strip()
+    with st.status("🌐 Скачиваем документы с портала ЕИС zakupki.gov.ru...", expanded=True) as fetch_status:
+        try:
+            st.write("🔗 Анализируем ссылку и определяем тип закупки...")
+            eis_files, reg_number = EISScraper.fetch_documents(url_to_fetch)
+
+            if not eis_files:
+                fetch_status.update(label="❌ Файлы не найдены", state="error")
+                st.error(
+                    f"На портале ЕИС не найдены прикреплённые файлы для закупки №{reg_number}. "
+                    "Возможно, закупка ещё не размещена или документы опубликованы в нестандартном формате."
+                )
+                st.info("💡 Попробуйте скачать файлы вручную и загрузить через кнопку выше.")
+            else:
+                file_names = ", ".join(name for name, _ in eis_files[:4])
+                st.write(f"📂 Найдено файлов: **{len(eis_files)}** → {file_names}{'...' if len(eis_files) > 4 else ''}")
+                st.write("📑 Классификация документов (ТЗ / Проект контракта / Информационная карта)...")
+                st.write("⚖️ Юридический аудит штрафов и неустоек (ПП РФ № 1042)...")
+                st.write("🩺 Проверка медицинского комплаенса (РУ Росздравнадзора, ПП РФ № 878, КТРУ)...")
+                st.write("🔍 Поиск признаков ограничения конкуренции («заточек» под бренд)...")
+
+                result = pipeline.process_files(
+                    files=eis_files,
+                    model_name=selected_model,
+                    force_mock=demo_mode,
+                )
+                st.session_state.analysis_result = result
+                fetch_status.update(
+                    label=f"✅ Анализ закупки №{reg_number} завершён!",
+                    state="complete",
+                    expanded=False,
+                )
+                st.success(
+                    f"Анализ завершён за **{result.execution_time_seconds} сек**. "
+                    f"Обработано **{result.total_documents}** документов ({result.total_characters} символов)."
+                )
+        except ValueError as ve:
+            fetch_status.update(label="❌ Ошибка URL", state="error")
+            st.error(f"❌ Некорректная ссылка: {str(ve)}")
+        except RuntimeError as re_err:
+            fetch_status.update(label="❌ Документы не найдены", state="error")
+            st.error(f"❌ {str(re_err)}")
+            st.info("💡 Попробуйте скопировать ссылку прямо на вкладку «Документы» закупки.")
+        except Exception as err:
+            fetch_status.update(label="❌ Ошибка", state="error")
+            st.error(f"❌ Неожиданная ошибка при скачивании: {str(err)}")
+
 elif uploaded_files:
     analyze_btn = st.button("🚀 Начать ИИ-экспертизу закупки", type="primary", use_container_width=True)
     if analyze_btn:
@@ -235,7 +304,7 @@ elif uploaded_files:
             with st.status("Выполняется многоуровневый анализ документации...", expanded=True) as status:
                 st.write(f"📦 Чтение и распаковка {len(uploaded_files)} файлов...")
                 files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
-                
+
                 st.write("📑 Классификация документов (ТЗ / Проект контракта / Информационная карта)...")
                 st.write("⚖️ Юридический аудит штрафов и неустоек (ПП РФ № 1042)...")
                 st.write("🩺 Проверка медицинского комплаенса (РУ Росздравнадзора, ПП РФ № 878, КТРУ)...")

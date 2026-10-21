@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.models.schemas import FullAnalysisReport
 from app.services.extractor import DocumentExtractor, ExtractedDocument
 from app.services.classifier import DocumentClassifier, DocumentType, ClassifiedDocument
+from app.services.anonymizer import DataAnonymizer, AnonymizationStats
 from app.services.llm_service import LLMService
 
 
@@ -16,6 +17,7 @@ class PipelineExecutionResult(BaseModel):
     total_characters: int
     classified_documents: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
+    anonymization_stats: AnonymizationStats = Field(default_factory=AnonymizationStats)
 
 
 class TenderAnalyzerPipeline:
@@ -59,6 +61,18 @@ class TenderAnalyzerPipeline:
                 total_characters=0,
                 warnings=ext_result.warnings
             )
+
+        # 1.1 Микро-анонимизация персональных данных (152-ФЗ) перед классификацией и LLM
+        total_anonymization_stats = AnonymizationStats()
+        for doc in ext_result.documents:
+            cleaned_text, doc_stats = DataAnonymizer.anonymize_text(doc.text_content)
+            doc.text_content = cleaned_text
+            total_anonymization_stats.phones_count += doc_stats.phones_count
+            total_anonymization_stats.emails_count += doc_stats.emails_count
+            total_anonymization_stats.passports_count += doc_stats.passports_count
+            total_anonymization_stats.snils_count += doc_stats.snils_count
+            total_anonymization_stats.personal_inn_count += doc_stats.personal_inn_count
+            total_anonymization_stats.bank_cards_count += doc_stats.bank_cards_count
 
         # 2. Классификация документов
         classified = DocumentClassifier.classify_all(ext_result.documents)
@@ -111,5 +125,6 @@ class TenderAnalyzerPipeline:
             total_documents=ext_result.total_documents,
             total_characters=ext_result.total_chars,
             classified_documents=doc_summaries,
-            warnings=ext_result.warnings
+            warnings=ext_result.warnings,
+            anonymization_stats=total_anonymization_stats,
         )

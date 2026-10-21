@@ -169,7 +169,14 @@ with st.sidebar:
     - **ПП РФ № 878:** Ограничения допуска иностранной радиоэлектроники
     - **135-ФЗ ст. 17:** Запрет ограничения конкуренции заказчиками
     """)
-    st.caption("v1.0.0 MVP • Ниша: Медоборудование")
+
+    st.subheader("🛡️ Защита данных (152-ФЗ)")
+    st.markdown("""
+    - **Микро-анонимизация:** Включена
+    - **Маскирование:** Телефоны, e-mail, паспорта РФ, СНИЛС, ИНН физлиц
+    - **Обработка:** В оперативной памяти (без сохранения на диск)
+    """)
+    st.caption("v1.1.0 • Ниша: Медоборудование • 152-ФЗ Compliant")
 
 
 # ----------------- ГЛАВНЫЙ ЭКРАН -----------------
@@ -360,6 +367,22 @@ if res:
     else:
         st.success(f"🤖 **Источник анализа:** ЖИВОЙ ИИ-АНАЛИЗ • Модель: `{report.model_used}` • Время: `{res.execution_time_seconds} сек`")
 
+    # Индикатор защиты персональных данных (152-ФЗ)
+    if hasattr(res, "anonymization_stats") and res.anonymization_stats and res.anonymization_stats.total_masked > 0:
+        a_stats = res.anonymization_stats
+        details = []
+        if a_stats.phones_count:
+            details.append(f"телефоны: {a_stats.phones_count}")
+        if a_stats.emails_count:
+            details.append(f"email: {a_stats.emails_count}")
+        if a_stats.passports_count:
+            details.append(f"паспорта: {a_stats.passports_count}")
+        if a_stats.snils_count:
+            details.append(f"СНИЛС: {a_stats.snils_count}")
+        if a_stats.personal_inn_count:
+            details.append(f"ИНН физлиц: {a_stats.personal_inn_count}")
+        st.caption(f"🛡️ **152-ФЗ Комплаенс:** В тексте документов обнаружено и замаскировано {a_stats.total_masked} персональных данных ({', '.join(details)}). Внешним API персональные данные не передаются.")
+
     # 2. ПАРАМЕТРЫ КОНТРАКТА (МЕТРИКИ)
     m1, m2, m3, m4 = st.columns(4)
     with m1:
@@ -506,8 +529,21 @@ if res:
 
     # Вкладка 4: Запросы разъяснений
     with tab_inquiry:
-        st.subheader("Официальные юридические запросы на разъяснение в ЕИС")
-        st.caption("Сформированы по канонам претензионной практики 44-ФЗ со всеми реквизитами Заказчика. Готовы к копированию и отправке на ЭТП.")
+        col_inq_title, col_inq_dl = st.columns([2, 1])
+        with col_inq_title:
+            st.subheader("Официальные юридические запросы на разъяснение в ЕИС")
+            st.caption("Сформированы по канонам претензионной практики 44-ФЗ со всеми реквизитами Заказчика. Готовы к отправке на ЭТП.")
+        with col_inq_dl:
+            if report.clarification_requests:
+                all_docx_bytes = ReportExporter.to_docx_all_clarifications(report.clarification_requests, report.summary)
+                st.download_button(
+                    label="📥 Скачать ВСЕ запросы в Word (.docx)",
+                    data=all_docx_bytes,
+                    file_name=f"Vse_Zaprosy_Raziasneniy_{report.summary.notice_number or '44FZ'}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True,
+                )
 
         if not report.clarification_requests:
             st.info("Поводов для подачи запроса на разъяснение не обнаружено.")
@@ -520,22 +556,48 @@ if res:
                     st.text_area(
                         "Полный официальный текст запроса (готов к отправке):",
                         value=cr.draft_text,
-                        height=280,
+                        height=260,
                         key=f"draft_{idx}",
+                    )
+
+                    # Кнопка скачивания индивидуального запроса в DOCX
+                    single_docx_bytes = ReportExporter.to_docx_clarification_request(cr, report.summary, idx)
+                    st.download_button(
+                        label=f"📄 Скачать Запрос № {idx} в Word (.docx)",
+                        data=single_docx_bytes,
+                        file_name=f"Zapros_Raziasneniy_{idx}_{report.summary.notice_number or '44FZ'}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_single_docx_{idx}",
                     )
 
     # Вкладка 5: Экспорт отчета
     with tab_export:
         st.subheader("Выгрузка аналитического заключения")
-        markdown_report = ReportExporter.to_markdown(report)
-        
-        st.download_button(
-            label="📥 Скачать отчет в формате Markdown (.md)",
-            data=markdown_report,
-            file_name=f"Tender_Audit_{report.summary.law_type}.md",
-            mime="text/markdown",
-            use_container_width=True,
+        st.markdown(
+            "Вы можете выгрузить отчёт в формате **Microsoft Word (.docx)** с цветными блоками вердикта "
+            "и таблицами для согласования с руководством, либо в текстовом формате **Markdown (.md)**."
         )
+
+        col_exp1, col_exp2 = st.columns(2)
+        with col_exp1:
+            docx_report = ReportExporter.to_docx_report(report)
+            st.download_button(
+                label="📥 Скачать полный отчёт в Word (.docx)",
+                data=docx_report,
+                file_name=f"Tender_Audit_Report_{report.summary.notice_number or report.summary.law_type}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True,
+            )
+        with col_exp2:
+            markdown_report = ReportExporter.to_markdown(report)
+            st.download_button(
+                label="📄 Скачать отчёт в Markdown (.md)",
+                data=markdown_report,
+                file_name=f"Tender_Audit_{report.summary.law_type}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
 
         with st.expander("Предпросмотр текстового отчета"):
             st.markdown(markdown_report)

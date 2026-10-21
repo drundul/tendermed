@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [eisUrl, setEisUrl] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState("gpt-5.4-mini");
+  const [engineMode, setEngineMode] = useState<"heuristic" | "ai">("heuristic");
   const [demoMode, setDemoMode] = useState(false);
   const [customApiKey, setCustomApiKey] = useState("");
   const [showKeyInput, setShowKeyInput] = useState(false);
@@ -68,7 +69,12 @@ export default function DashboardPage() {
       return;
     }
 
-    setCustomApiKey(getOpenAIKey());
+    const savedKey = getOpenAIKey();
+    setCustomApiKey(savedKey);
+    if (savedKey && savedKey.trim().length > 0) {
+      setEngineMode("ai");
+      setShowKeyInput(true);
+    }
 
     api.auth
       .getMe()
@@ -99,7 +105,9 @@ export default function DashboardPage() {
     setLoadingStatus("🌐 Скачиваем документы с портала ЕИС (zakupki.gov.ru)...");
 
     try {
-      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel, demoMode, customApiKey);
+      const isHeuristic = engineMode === "heuristic";
+      const keyToSend = isHeuristic ? "" : customApiKey;
+      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel, isHeuristic, keyToSend);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -122,7 +130,9 @@ export default function DashboardPage() {
     setLoadingStatus("📑 Обработка и 152-ФЗ анонимизация файлов...");
 
     try {
-      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel, demoMode, customApiKey);
+      const isHeuristic = engineMode === "heuristic";
+      const keyToSend = isHeuristic ? "" : customApiKey;
+      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel, isHeuristic, keyToSend);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -212,43 +222,126 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <span>⚡ Экспертная ИИ-экспертиза закупки</span>
+                <span>⚡ Экспертная экспертиза закупки</span>
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 Вставьте прямую ссылку на закупку с ЕИС или загрузите комплект файлов ТЗ и контракта.
               </p>
             </div>
+          </div>
 
-            {/* Модель и Демо-режим */}
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={demoMode}
-                  onChange={(e) => setDemoMode(e.target.checked)}
-                  className="rounded text-sky-600 focus:ring-sky-500"
-                />
-                <span>🧪 Демо-режим (без токенов)</span>
-              </label>
+          {/* ВЫБОР ДВИЖКА АНАЛИЗА: Автономный 44-ФЗ или Нейросеть */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 mb-5 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-2">
+                  <span>Режим работы системы</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    engineMode === "heuristic" 
+                      ? "bg-sky-100 text-sky-800 border border-sky-200" 
+                      : "bg-violet-100 text-violet-800 border border-violet-200"
+                  }`}>
+                    {engineMode === "heuristic" ? "⚡ Автономный эксперт 44-ФЗ" : "🤖 Нейросеть GPT"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                  {engineMode === "heuristic" ? (
+                    <>
+                      <b>Автономный режим без ИИ:</b> Мгновенный экспертный анализ норм права РФ, сроков поставки, РУ Росздравнадзора, нацрежима (ПП РФ № 878) и обеспечения по <i>встроенной юридической базе правил 44-ФЗ</i>. Токены не тратятся, внешние серверы не опрашиваются.
+                    </>
+                  ) : (
+                    <>
+                      <b>Нейросетевой режим (OpenAI):</b> Глубокий семантический ИИ-аудит спецификации на скрытые «заточки» оборудования и генерация персонализированных запросов на разъяснение на базе GPT-4o / GPT-5.4.
+                    </>
+                  )}
+                </p>
+              </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">Модель:</span>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              {/* Крупный переключатель режима */}
+              <div className="flex items-center bg-white p-1 rounded-xl border border-slate-300 shadow-sm shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEngineMode("heuristic");
+                    setDemoMode(true);
+                  }}
+                  className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                    engineMode === "heuristic"
+                      ? "bg-sky-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
                 >
-                  <option value="gpt-5.4-mini">gpt-5.4-mini (Быстрая • 2.5 млн токенов)</option>
-                  <option value="gpt-5.4">gpt-5.4 (Глубокий аудит)</option>
-                  <option value="gpt-5.2">gpt-5.2 (Флагманская)</option>
-                  <option value="gpt-4o">gpt-4o</option>
-                </select>
+                  <Scale className="w-4 h-4" />
+                  <span>⚡ Автономно (без ИИ)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEngineMode("ai");
+                    setDemoMode(false);
+                    setShowKeyInput(true);
+                  }}
+                  className={`px-3.5 py-2 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                    engineMode === "ai"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>🤖 С нейросетью (OpenAI)</span>
+                </button>
               </div>
             </div>
+
+            {/* Настройки при выборе режима с нейросетью */}
+            {engineMode === "ai" && (
+              <div className="mt-4 pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="flex-1 flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-violet-600 shrink-0" />
+                  <input
+                    type="password"
+                    value={customApiKey}
+                    onChange={(e) => {
+                      setCustomApiKey(e.target.value);
+                      setOpenAIKey(e.target.value);
+                    }}
+                    placeholder="Вставьте ваш API-ключ (OpenAI sk-... или ключ ProxyAPI)"
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  {customApiKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomApiKey("");
+                        setOpenAIKey("");
+                      }}
+                      className="text-[11px] text-red-500 hover:underline shrink-0 font-medium px-1"
+                    >
+                      Очистить
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-slate-500 font-medium">Модель:</span>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="text-xs font-semibold bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  >
+                    <option value="gpt-5.4-mini">gpt-5.4-mini (Быстрая • Рекомендуется)</option>
+                    <option value="gpt-5.4">gpt-5.4 (Глубокий аудит)</option>
+                    <option value="gpt-5.2">gpt-5.2 (Флагманская)</option>
+                    <option value="gpt-4o">gpt-4o</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Быстрые ссылки для тестирования */}
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          <div className="mb-5 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-400 font-medium">Быстрый пример:</span>
             <button
               type="button"
@@ -280,56 +373,6 @@ export default function DashboardPage() {
             >
               Аукцион 0142200001326018834 (ea20)
             </button>
-          </div>
-
-          {/* Настройка пользовательского OpenAI API ключа */}
-          <div className="mb-4 pt-3 border-t border-slate-100">
-            <div className="flex items-center justify-between text-xs">
-              <button
-                type="button"
-                onClick={() => setShowKeyInput(!showKeyInput)}
-                className="text-slate-600 hover:text-sky-600 font-medium flex items-center gap-1.5 transition-colors"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-sky-600" />
-                <span>Ключ OpenAI / ProxyAPI (опционально, для живого ИИ-аудита)</span>
-                <span className="text-[11px] text-slate-400">
-                  {customApiKey ? "• Ключ активен" : "• Не задан (работает эксперт 44-ФЗ)"}
-                </span>
-              </button>
-              {customApiKey && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomApiKey("");
-                    setOpenAIKey("");
-                  }}
-                  className="text-red-500 hover:underline text-[11px]"
-                >
-                  Очистить ключ
-                </button>
-              )}
-            </div>
-            {showKeyInput && (
-              <div className="mt-2 flex gap-2">
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => {
-                    setCustomApiKey(e.target.value);
-                    setOpenAIKey(e.target.value);
-                  }}
-                  placeholder="sk-proj-... или ключ ProxyAPI"
-                  className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeyInput(false)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-lg font-medium"
-                >
-                  Сохранить
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Переключатель вкладок ввода */}

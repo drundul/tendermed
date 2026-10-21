@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.database import get_db
 from app.db.models import User, TenderAudit
 from app.api.auth import get_current_user
@@ -52,10 +53,12 @@ def analyze_by_url(
 
     # 2. Запуск сквозного пайплайна анализа
     pipeline = TenderAnalyzerPipeline()
+    use_mock = bool(payload.demo_mode) or (not settings.has_api_key)
     try:
         result = pipeline.process_files(
             files=eis_files,
             model_name=payload.model_name or "gpt-5.4-mini",
+            force_mock=use_mock,
         )
     except Exception as e:
         raise HTTPException(
@@ -98,6 +101,7 @@ def analyze_by_url(
 async def analyze_by_files(
     files: List[UploadFile] = File(...),
     model_name: Optional[str] = "gpt-5.4-mini",
+    demo_mode: Optional[bool] = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -120,8 +124,13 @@ async def analyze_by_files(
         files_payload.append((f.filename, content))
 
     pipeline = TenderAnalyzerPipeline()
+    use_mock = bool(demo_mode) or (not settings.has_api_key)
     try:
-        result = pipeline.process_files(files=files_payload, model_name=model_name or "gpt-5.4-mini")
+        result = pipeline.process_files(
+            files=files_payload,
+            model_name=model_name or "gpt-5.4-mini",
+            force_mock=use_mock,
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

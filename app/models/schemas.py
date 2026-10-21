@@ -153,6 +153,7 @@ class UserResponse(BaseModel):
 class AnalyzeUrlRequest(BaseModel):
     url: str
     model_name: Optional[str] = "gpt-5.4-mini"
+    demo_mode: Optional[bool] = False
 
 
 class AuditSummaryResponse(BaseModel):

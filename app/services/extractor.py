@@ -71,6 +71,14 @@ class DocumentExtractor:
                 total_chars=doc.char_count,
                 warnings=["Документ пуст"] if doc.char_count == 0 else []
             )
+        elif lower_name.endswith(".doc"):
+            doc = cls._extract_doc(filename, file_bytes)
+            return ExtractionResult(
+                documents=[doc],
+                total_documents=1,
+                total_chars=doc.char_count,
+                warnings=["Документ пуст"] if doc.char_count == 0 else []
+            )
         elif lower_name.endswith(".pdf"):
             doc = cls._extract_pdf(filename, file_bytes)
             return ExtractionResult(
@@ -243,3 +251,43 @@ class DocumentExtractor:
             page_count=max(1, len(text) // 2500),
             char_count=len(text)
         )
+
+    @classmethod
+    def _extract_doc(cls, filename: str, file_bytes: bytes) -> ExtractedDocument:
+        """Извлечение текста из файлов формата .doc (Word 97-2003 OLE2 или маскированный docx)."""
+        # Если это на самом деле docx (ZIP архив)
+        if file_bytes.startswith(b"PK\x03\x04"):
+            return cls._extract_docx(filename, file_bytes)
+
+        import re
+        text_chunks: List[str] = []
+
+        # Поиск UTF-16LE строк (русские буквы 0x0400..0x04FF и ASCII)
+        utf16_matches = re.findall(rb'(?:[\x20-\x7e\r\n\t]\x00|[\x00-\xff]\x04)+', file_bytes)
+        for chunk in utf16_matches:
+            try:
+                decoded = chunk.decode("utf-16le").strip()
+                if len(decoded) > 3:
+                    text_chunks.append(decoded)
+            except Exception:
+                pass
+
+        if not text_chunks:
+            cp1251_matches = re.findall(rb'[\x20-\x7e\xc0-\xff\r\n\t]{4,}', file_bytes)
+            for chunk in cp1251_matches:
+                try:
+                    decoded = chunk.decode("windows-1251").strip()
+                    if len(decoded) > 3:
+                        text_chunks.append(decoded)
+                except Exception:
+                    pass
+
+        full_text = "\n".join(text_chunks)
+        return ExtractedDocument(
+            filename=filename,
+            file_type="doc",
+            text_content=full_text,
+            page_count=max(1, len(full_text) // 2000),
+            char_count=len(full_text),
+        )
+

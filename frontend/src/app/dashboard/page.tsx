@@ -42,6 +42,7 @@ export default function DashboardPage() {
   const [eisUrl, setEisUrl] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState("gpt-5.4-mini");
+  const [demoMode, setDemoMode] = useState(false);
 
   // Статус анализа
   const [loading, setLoading] = useState(false);
@@ -90,10 +91,10 @@ export default function DashboardPage() {
 
     setError("");
     setLoading(true);
-    setLoadingStatus("🌐 Скачиваем документы с портала ЕИС zakupki.gov.ru...");
+    setLoadingStatus("🌐 Скачиваем документы с портала ЕИС (zakupki.gov.ru)...");
 
     try {
-      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel);
+      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel, demoMode);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -113,10 +114,10 @@ export default function DashboardPage() {
 
     setError("");
     setLoading(true);
-    setLoadingStatus("📑 Обработка и анонимизация файлов...");
+    setLoadingStatus("📑 Обработка и 152-ФЗ анонимизация файлов...");
 
     try {
-      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel);
+      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel, demoMode);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -213,20 +214,57 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            {/* Выбор модели */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">Модель:</span>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              >
-                <option value="gpt-5.4-mini">gpt-5.4-mini (По умолчанию • Быстрая)</option>
-                <option value="gpt-5.4">gpt-5.4 (Глубокий аудит)</option>
-                <option value="gpt-5.2">gpt-5.2 (Флагманская)</option>
-                <option value="gpt-4o">gpt-4o</option>
-              </select>
+            {/* Модель и Демо-режим */}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={demoMode}
+                  onChange={(e) => setDemoMode(e.target.checked)}
+                  className="rounded text-sky-600 focus:ring-sky-500"
+                />
+                <span>🧪 Демо-режим (без токенов)</span>
+              </label>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">Модель:</span>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="gpt-5.4-mini">gpt-5.4-mini (Быстрая • 2.5 млн токенов)</option>
+                  <option value="gpt-5.4">gpt-5.4 (Глубокий аудит)</option>
+                  <option value="gpt-5.2">gpt-5.2 (Флагманская)</option>
+                  <option value="gpt-4o">gpt-4o</option>
+                </select>
+              </div>
             </div>
+          </div>
+
+          {/* Быстрые ссылки для тестирования */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400 font-medium">Быстрый пример:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setInputTab("url");
+                setEisUrl("https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0372200005426000768");
+              }}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md transition-colors"
+            >
+              Котировка 0372200005426000768 (zk20)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInputTab("url");
+                setEisUrl("https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326018834");
+              }}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md transition-colors"
+            >
+              Аукцион 0142200001326018834 (ea20)
+            </button>
           </div>
 
           {/* Переключатель вкладок ввода */}
@@ -251,7 +289,7 @@ export default function DashboardPage() {
               }`}
             >
               <Upload className="w-4 h-4" />
-              <span>Загрузить файлы (.docx / .pdf / .zip)</span>
+              <span>Загрузить файлы (.docx / .pdf / .doc / .zip)</span>
             </button>
           </div>
 
@@ -292,7 +330,7 @@ export default function DashboardPage() {
               <input
                 type="file"
                 multiple
-                accept=".docx,.pdf,.zip,.txt,.md"
+                accept=".docx,.pdf,.doc,.zip,.txt,.md"
                 onChange={(e) => {
                   if (e.target.files) {
                     setSelectedFiles(Array.from(e.target.files));
@@ -320,11 +358,30 @@ export default function DashboardPage() {
             </form>
           )}
 
-          {/* Индикатор статуса загрузки */}
+          {/* Индикатор статуса загрузки с шагами */}
           {loading && (
-            <div className="mt-4 p-4 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-sm flex items-center gap-3">
-              <RefreshCw className="w-4 h-4 animate-spin text-sky-600 shrink-0" />
-              <span>{loadingStatus}</span>
+            <div className="mt-5 p-5 rounded-2xl bg-sky-50 border border-sky-200 text-sky-950 space-y-3 shadow-inner">
+              <div className="flex items-center gap-2.5 font-bold text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin text-sky-600 shrink-0" />
+                <span>{loadingStatus}</span>
+              </div>
+              <div className="w-full bg-sky-200/60 rounded-full h-2 overflow-hidden">
+                <div className="bg-sky-600 h-2 rounded-full animate-pulse w-4/5 transition-all"></div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-semibold text-slate-600 pt-1">
+                <div className="flex items-center gap-1.5 text-sky-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" /> 1. Поиск в ЕИС
+                </div>
+                <div className="flex items-center gap-1.5 text-sky-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" /> 2. Скачивание файлов
+                </div>
+                <div className="flex items-center gap-1.5 text-sky-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" /> 3. 152-ФЗ защита
+                </div>
+                <div className="flex items-center gap-1.5 text-sky-800">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" /> 4. ИИ-экспертиза
+                </div>
+              </div>
             </div>
           )}
 
@@ -332,7 +389,10 @@ export default function DashboardPage() {
           {error && (
             <div className="mt-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2.5">
               <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <div>
+                <div className="font-bold">Ошибка обработки</div>
+                <div className="mt-0.5 text-xs text-red-600 leading-relaxed">{error}</div>
+              </div>
             </div>
           )}
         </div>

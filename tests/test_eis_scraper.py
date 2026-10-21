@@ -57,8 +57,8 @@ def test_extract_file_links_from_html():
     assert "uid=BBB222" in links[1][1]
 
 
-@patch("app.services.eis_scraper.requests.get")
-def test_eis_scraper_fetch_documents_mock(mock_get):
+@patch("app.services.eis_scraper.requests.Session")
+def test_eis_scraper_fetch_documents_mock(mock_session_cls):
     sample_html = """
     <html>
         <body>
@@ -83,8 +83,10 @@ def test_eis_scraper_fetch_documents_mock(mock_get):
     resp_file.content = b"PK\x03\x04mock docx content"
     resp_file.raise_for_status = MagicMock()
 
+    mock_session = MagicMock()
     # Поочередно отдаем страницу, затем файл
-    mock_get.side_effect = [resp_page, resp_file]
+    mock_session.get.side_effect = [resp_page, resp_file]
+    mock_session_cls.return_value = mock_session
 
     files, reg = EISScraper.fetch_documents("https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326018834")
     
@@ -95,8 +97,8 @@ def test_eis_scraper_fetch_documents_mock(mock_get):
     assert content == b"PK\x03\x04mock docx content"
 
 
-@patch("app.services.eis_scraper.requests.get")
-def test_download_file_mojibake_decoded(mock_get):
+@patch("app.services.eis_scraper.requests.Session")
+def test_download_file_mojibake_decoded(mock_session_cls):
     from app.services.eis_scraper import _download_file
     
     resp_file = MagicMock()
@@ -108,7 +110,10 @@ def test_download_file_mojibake_decoded(mock_get):
     }
     resp_file.content = b"sample_bytes"
     resp_file.raise_for_status = MagicMock()
-    mock_get.return_value = resp_file
+
+    mock_session = MagicMock()
+    mock_session.get.return_value = resp_file
+    mock_session_cls.return_value = mock_session
 
     result = _download_file("https://zakupki.gov.ru/fake_url", "Проект")
     assert result is not None

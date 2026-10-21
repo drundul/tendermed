@@ -45,10 +45,30 @@ def get_current_user(
     return user
 
 
+DISPOSABLE_DOMAINS = {
+    "temp-mail.org", "tempmail.com", "temp-mail.io", "guerrillamail.com",
+    "10minutemail.com", "mailinator.com", "trashmail.com", "yopmail.com",
+    "fakeinbox.com", "dispostable.com", "getairmail.com", "mohmal.com",
+    "dropmail.me", "crazymailing.com", "throwawaymail.com", "sharklasers.com",
+    "grr.la", "guerrillamail.biz", "guerrillamail.net", "guerrillamail.org",
+}
+
+
 @router.post("/register", response_model=TokenResponse)
 def register(payload: UserRegisterRequest, db: Session = Depends(get_db)):
     """Регистрация нового пользователя с начислением 3 бесплатных аудитов."""
-    existing_user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
+    clean_email = payload.email.lower().strip()
+
+    # Защита от регистрации через временные почты (temp-mail)
+    if "@" in clean_email:
+        domain = clean_email.split("@")[1]
+        if domain in DISPOSABLE_DOMAINS or any(kw in domain for kw in ["temp-mail", "tempmail", "throwaway", "dispostable", "fakeinbox"]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Регистрация с временных почтовых сервисов (temp-mail) ограничена. Пожалуйста, укажите постоянную рабочую или личную почту (например, @mail.ru, @yandex.ru, @gmail.com или корпоративную).",
+            )
+
+    existing_user = db.query(User).filter(User.email == clean_email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

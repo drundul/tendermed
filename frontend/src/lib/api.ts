@@ -98,7 +98,7 @@ export const api = {
   },
 
   tenders: {
-    async analyzeUrl(url: string, modelName: string = "gpt-5.4-mini") {
+    async analyzeUrl(url: string, modelName: string = "gpt-5.4-mini", demoMode: boolean = false) {
       return request<{
         audit_id: number;
         report: any;
@@ -108,16 +108,17 @@ export const api = {
         remaining_credits: number;
       }>("/api/tenders/analyze-url", {
         method: "POST",
-        body: JSON.stringify({ url, model_name: modelName }),
+        body: JSON.stringify({ url, model_name: modelName, demo_mode: demoMode }),
       });
     },
 
-    async analyzeFiles(files: File[], modelName: string = "gpt-5.4-mini") {
+    async analyzeFiles(files: File[], modelName: string = "gpt-5.4-mini", demoMode: boolean = false) {
       const formData = new FormData();
       for (const file of files) {
         formData.append("files", file);
       }
       formData.append("model_name", modelName);
+      formData.append("demo_mode", String(demoMode));
 
       return request<{
         audit_id: number;

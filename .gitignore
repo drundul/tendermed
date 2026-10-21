@@ -18,6 +18,15 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Database
+*.db
+*.sqlite3
+
+# Frontend dependencies & build
+frontend/node_modules/
+frontend/.next/
+frontend/.env*
+
 # Temporary uploaded files
 temp_uploads/
 app_data/

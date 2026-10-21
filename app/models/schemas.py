@@ -117,3 +117,54 @@ class FullAnalysisReport(BaseModel):
     analysis_timestamp: Optional[str] = Field(default=None, description="Время проведения анализа")
     model_used: Optional[str] = Field(default=None, description="Использованная модель ИИ")
     is_mock: bool = Field(default=False, description="Признак демонстрационного эталона")
+
+
+# ===================== API DTO SCHEMAS =====================
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    password: str
+    company_name: Optional[str] = None
+
+
+class UserLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    available_credits: int
+    email: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    company_name: Optional[str] = None
+    available_credits: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+class AnalyzeUrlRequest(BaseModel):
+    url: str
+    model_name: Optional[str] = "gpt-5.4-mini"
+
+
+class AuditSummaryResponse(BaseModel):
+    id: int
+    notice_number: Optional[str] = None
+    purchase_subject: str
+    customer_name: Optional[str] = None
+    law_type: str
+    verdict: str
+    risk_score: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
+

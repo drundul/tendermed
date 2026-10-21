@@ -23,8 +23,9 @@ import {
   ChevronDown,
   Layers,
   History,
+  KeyRound,
 } from "lucide-react";
-import { api, getToken } from "@/lib/api";
+import { api, getToken, getOpenAIKey, setOpenAIKey } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -43,6 +44,8 @@ export default function DashboardPage() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState("gpt-5.4-mini");
   const [demoMode, setDemoMode] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState("");
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
   // Статус анализа
   const [loading, setLoading] = useState(false);
@@ -64,6 +67,8 @@ export default function DashboardPage() {
       router.push("/login");
       return;
     }
+
+    setCustomApiKey(getOpenAIKey());
 
     api.auth
       .getMe()
@@ -94,7 +99,7 @@ export default function DashboardPage() {
     setLoadingStatus("🌐 Скачиваем документы с портала ЕИС (zakupki.gov.ru)...");
 
     try {
-      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel, demoMode);
+      const res = await api.tenders.analyzeUrl(eisUrl.trim(), selectedModel, demoMode, customApiKey);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -117,7 +122,7 @@ export default function DashboardPage() {
     setLoadingStatus("📑 Обработка и 152-ФЗ анонимизация файлов...");
 
     try {
-      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel, demoMode);
+      const res = await api.tenders.analyzeFiles(selectedFiles, selectedModel, demoMode, customApiKey);
       setAuditResult(res);
       if (user) {
         setUser({ ...user, available_credits: res.remaining_credits });
@@ -249,11 +254,21 @@ export default function DashboardPage() {
               type="button"
               onClick={() => {
                 setInputTab("url");
+                setEisUrl("https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0306500000326000965");
+              }}
+              className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-800 font-semibold rounded-md border border-sky-200 transition-colors"
+            >
+              🩺 Кардиостимуляторы 0306500000326000965 (35.9 млн ₽)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInputTab("url");
                 setEisUrl("https://zakupki.gov.ru/epz/order/notice/zk20/view/common-info.html?regNumber=0372200005426000768");
               }}
               className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md transition-colors"
             >
-              Котировка 0372200005426000768 (zk20)
+              Котировка 0372200005426000768 (.doc)
             </button>
             <button
               type="button"
@@ -265,6 +280,56 @@ export default function DashboardPage() {
             >
               Аукцион 0142200001326018834 (ea20)
             </button>
+          </div>
+
+          {/* Настройка пользовательского OpenAI API ключа */}
+          <div className="mb-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => setShowKeyInput(!showKeyInput)}
+                className="text-slate-600 hover:text-sky-600 font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-sky-600" />
+                <span>Ключ OpenAI / ProxyAPI (опционально, для живого ИИ-аудита)</span>
+                <span className="text-[11px] text-slate-400">
+                  {customApiKey ? "• Ключ активен" : "• Не задан (работает эксперт 44-ФЗ)"}
+                </span>
+              </button>
+              {customApiKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomApiKey("");
+                    setOpenAIKey("");
+                  }}
+                  className="text-red-500 hover:underline text-[11px]"
+                >
+                  Очистить ключ
+                </button>
+              )}
+            </div>
+            {showKeyInput && (
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="password"
+                  value={customApiKey}
+                  onChange={(e) => {
+                    setCustomApiKey(e.target.value);
+                    setOpenAIKey(e.target.value);
+                  }}
+                  placeholder="sk-proj-... или ключ ProxyAPI"
+                  className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeyInput(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-lg font-medium"
+                >
+                  Сохранить
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Переключатель вкладок ввода */}
@@ -400,6 +465,40 @@ export default function DashboardPage() {
         {/* 3. ОТОБРАЖЕНИЕ РЕЗУЛЬТАТОВ АУДИТА */}
         {report && (
           <div className="space-y-6">
+            {/* ИНФО-БАННЕР РЕЖИМА АУДИТА */}
+            {report.is_mock ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-900 leading-relaxed">
+                  <div className="font-bold text-sm text-amber-950 flex items-center gap-2">
+                    <span>Экспертный аудит по правилам 44-ФЗ (Без внешнего OpenAI API)</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-amber-200 text-amber-900 font-semibold">
+                      Реальные данные ЕИС
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    Все параметры контракта (НМЦК: <b>{report.summary.nmck_rubles ? `${report.summary.nmck_rubles.toLocaleString("ru-RU")} ₽` : "Н/Д"}</b>, Заказчик: <b>{report.summary.customer_name}</b>, объект: <b>«{report.summary.purchase_subject}»</b>) и риски извлечены напрямую из официальных документов ЕИС.
+                    Чтобы запустить глубокий нейросетевой аудит через OpenAI (GPT-4o / GPT-5), укажите ваш API-ключ в настройках выше.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-sm">
+                <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-emerald-900 leading-relaxed">
+                  <div className="font-bold text-sm text-emerald-950 flex items-center gap-2">
+                    <span>Живой ИИ-аудит ({report.model_used || "OpenAI"})</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-900 font-semibold">
+                      GPT Модель
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    Отчет сформирован нейросетью с глубоким семантическим риск-аудитом по всей документации закупки.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ГЛАВНЫЙ БАННЕР ВЕРДИКТА */}
             <div
               className={`p-6 sm:p-8 rounded-2xl text-white shadow-lg ${

@@ -150,10 +150,30 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class TenderEISMetadata(BaseModel):
+    """Официальные метаданные извещения, извлеченные со страницы ЕИС."""
+    reg_number: str
+    purchase_subject: Optional[str] = None
+    nmck: Optional[float] = None
+    currency: str = "RUB"
+    customer_name: Optional[str] = None
+    customer_inn: Optional[str] = None
+    customer_kpp: Optional[str] = None
+    delivery_place: Optional[str] = None
+    delivery_term: Optional[str] = None
+    etp_name: Optional[str] = None
+    ikz: Optional[str] = None
+    law_type: str = "44-ФЗ"
+    application_guarantee: Optional[str] = None
+    contract_guarantee: Optional[str] = None
+    submission_deadline: Optional[str] = None
+
+
 class AnalyzeUrlRequest(BaseModel):
     url: str
     model_name: Optional[str] = "gpt-5.4-mini"
     demo_mode: Optional[bool] = False
+    api_key: Optional[str] = None
 
 
 class AuditSummaryResponse(BaseModel):

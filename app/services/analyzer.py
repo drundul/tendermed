@@ -32,15 +32,25 @@ class TenderAnalyzerPipeline:
         file_bytes: bytes,
         model_name: Optional[str] = None,
         force_mock: bool = False,
+        tender_metadata: Optional[dict] = None,
+        user_api_key: Optional[str] = None,
     ) -> PipelineExecutionResult:
         """Сквозная обработка одного загруженного файла (архив ZIP, PDF, DOCX)."""
-        return self.process_files([(filename, file_bytes)], model_name=model_name, force_mock=force_mock)
+        return self.process_files(
+            [(filename, file_bytes)],
+            model_name=model_name,
+            force_mock=force_mock,
+            tender_metadata=tender_metadata,
+            user_api_key=user_api_key,
+        )
 
     def process_files(
         self,
         files: List[Tuple[str, bytes]],
         model_name: Optional[str] = None,
         force_mock: bool = False,
+        tender_metadata: Optional[dict] = None,
+        user_api_key: Optional[str] = None,
     ) -> PipelineExecutionResult:
         """Сквозная обработка списка файлов (несколько документов или архивов)."""
         start_time = time.time()
@@ -49,11 +59,8 @@ class TenderAnalyzerPipeline:
         ext_result = DocumentExtractor.extract_from_multiple_files(files)
         if not ext_result.documents:
             # Если документов нет или ошибка формата
-            mock_report = self.llm_service.analyze_tender(
-                context_text="",
-                model_name=model_name,
-                force_mock=True
-            )
+            from app.services.heuristic_analyzer import HeuristicAnalyzer
+            mock_report = HeuristicAnalyzer.analyze([], "", metadata=tender_metadata)
             return PipelineExecutionResult(
                 report=mock_report,
                 execution_time_seconds=round(time.time() - start_time, 2),
@@ -78,7 +85,6 @@ class TenderAnalyzerPipeline:
         classified = DocumentClassifier.classify_all(ext_result.documents)
 
         # 3. Формирование приоритезированного контекста для LLM
-        # Сначала отдаем ТЗ и Проект контракта (самые критичные для выявления рисков)
         context_parts = []
         doc_summaries = []
 
@@ -111,12 +117,44 @@ class TenderAnalyzerPipeline:
 
         full_context = "".join(context_parts)
 
-        # 4. Запуск LLM анализа
-        report = self.llm_service.analyze_tender(
-            context_text=full_context,
-            model_name=model_name,
-            force_mock=force_mock
-        )
+        # 4. Запуск анализа: LLM (если есть ключ) или встроенный эвристический анализатор
+        has_key = bool(self.llm_service.api_key or (user_api_key and user_api_key.strip()))
+        if force_mock or not has_key:
+            from app.services.heuristic_analyzer import HeuristicAnalyzer
+            report = HeuristicAnalyzer.analyze(sorted_classified, full_context, metadata=tender_metadata)
+        else:
+            try:
+                report = self.llm_service.analyze_tender(
+                    context_text=full_context,
+                    model_name=model_name,
+                    force_mock=False,
+                    user_api_key=user_api_key,
+                )
+                if tender_metadata:
+                    if tender_metadata.get("nmck") and (not report.summary.nmck_rubles or report.summary.nmck_rubles == 0):
+                        report.summary.nmck_rubles = tender_metadata["nmck"]
+                    if tender_metadata.get("customer_name") and (not report.summary.customer_name or "не указан" in report.summary.customer_name.lower()):
+                        report.summary.customer_name = tender_metadata["customer_name"]
+                    if tender_metadata.get("purchase_subject") and (not report.summary.purchase_subject or "не указан" in report.summary.purchase_subject.lower()):
+                        report.summary.purchase_subject = tender_metadata["purchase_subject"]
+                    if tender_metadata.get("customer_inn") and not report.summary.customer_inn:
+                        report.summary.customer_inn = tender_metadata["customer_inn"]
+                    if tender_metadata.get("customer_kpp") and not report.summary.customer_kpp:
+                        report.summary.customer_kpp = tender_metadata["customer_kpp"]
+                    if tender_metadata.get("delivery_place") and not report.summary.delivery_place:
+                        report.summary.delivery_place = tender_metadata["delivery_place"]
+                    if tender_metadata.get("delivery_term") and not report.summary.delivery_deadline:
+                        report.summary.delivery_deadline = tender_metadata["delivery_term"]
+                    if tender_metadata.get("etp_name") and not report.summary.etp_name:
+                        report.summary.etp_name = tender_metadata["etp_name"]
+                    if tender_metadata.get("reg_number") and not report.summary.notice_number:
+                        report.summary.notice_number = tender_metadata["reg_number"]
+                    if tender_metadata.get("ikz") and not report.summary.ikz:
+                        report.summary.ikz = tender_metadata["ikz"]
+            except Exception as e:
+                from app.services.heuristic_analyzer import HeuristicAnalyzer
+                report = HeuristicAnalyzer.analyze(sorted_classified, full_context, metadata=tender_metadata)
+                report.verdict_summary = f"[ИИ API временно недоступен ({str(e)}). Аудит выполнен экспертным модулем 44-ФЗ]\n" + report.verdict_summary
 
         elapsed = round(time.time() - start_time, 2)
         return PipelineExecutionResult(

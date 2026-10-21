@@ -43,6 +43,7 @@ class LLMService:
         context_text: str,
         model_name: Optional[str] = None,
         force_mock: bool = False,
+        user_api_key: Optional[str] = None,
     ) -> FullAnalysisReport:
         """Проводит анализ документации через OpenAI или возвращает демонстрационный отчет."""
         effective_model = model_name or settings.openai_model_smart
@@ -52,8 +53,15 @@ class LLMService:
             logger.info("Возврат эталонного демонстрационного отчета (force_mock=True).")
             return self._generate_mock_report()
 
-        # 2. Если демо-режим выключен, но нет API-ключа:
-        if not self.client:
+        # 2. Выбираем клиент (пользовательский ключ или системный)
+        active_client = self.client
+        if user_api_key and user_api_key.strip():
+            client_kwargs = {"api_key": user_api_key.strip()}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
+            active_client = OpenAI(**client_kwargs)
+
+        if not active_client:
             raise ValueError(
                 "API-ключ OpenAI не найден или пуст! Пожалуйста, укажите действующий ключ в боковой панели "
                 "слева или включите 'Демо-режим'."
@@ -65,7 +73,7 @@ class LLMService:
             prompt = USER_PROMPT_TEMPLATE.format(context_documents=context_text[:120000])
 
             # Вызов Structured Outputs через бета-парсер Pydantic
-            response = self.client.beta.chat.completions.parse(
+            response = active_client.beta.chat.completions.parse(
                 model=effective_model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT_MED_AUDIT},

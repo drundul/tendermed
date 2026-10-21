@@ -1,6 +1,6 @@
 import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -37,7 +37,7 @@ def analyze_by_url(
 
     # 1. Скачиваем документы через EISScraper
     try:
-        eis_files, reg_number = EISScraper.fetch_documents(url)
+        eis_files, reg_number, metadata = EISScraper.fetch_documents(url)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except RuntimeError as re_err:
@@ -53,12 +53,15 @@ def analyze_by_url(
 
     # 2. Запуск сквозного пайплайна анализа
     pipeline = TenderAnalyzerPipeline()
-    use_mock = bool(payload.demo_mode) or (not settings.has_api_key)
+    use_mock = bool(payload.demo_mode)
+    effective_api_key = payload.api_key
     try:
         result = pipeline.process_files(
             files=eis_files,
             model_name=payload.model_name or "gpt-5.4-mini",
             force_mock=use_mock,
+            tender_metadata=metadata,
+            user_api_key=effective_api_key,
         )
     except Exception as e:
         raise HTTPException(
@@ -102,6 +105,7 @@ async def analyze_by_files(
     files: List[UploadFile] = File(...),
     model_name: Optional[str] = "gpt-5.4-mini",
     demo_mode: Optional[bool] = False,
+    x_openai_key: Optional[str] = Header(None, alias="X-OpenAI-Key"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -124,12 +128,13 @@ async def analyze_by_files(
         files_payload.append((f.filename, content))
 
     pipeline = TenderAnalyzerPipeline()
-    use_mock = bool(demo_mode) or (not settings.has_api_key)
+    use_mock = bool(demo_mode)
     try:
         result = pipeline.process_files(
             files=files_payload,
             model_name=model_name or "gpt-5.4-mini",
             force_mock=use_mock,
+            user_api_key=x_openai_key,
         )
     except Exception as e:
         raise HTTPException(

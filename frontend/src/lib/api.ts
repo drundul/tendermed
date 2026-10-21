@@ -22,14 +22,30 @@ export function removeToken() {
   }
 }
 
+export function getOpenAIKey(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("tendermed_openai_key") || "";
+}
+
+export function setOpenAIKey(key: string) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("tendermed_openai_key", key.trim());
+  }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
+  const userOpenAIKey = getOpenAIKey();
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (userOpenAIKey && !headers["X-OpenAI-Key"]) {
+    headers["X-OpenAI-Key"] = userOpenAIKey;
   }
 
   // Не устанавливаем Content-Type для FormData
@@ -98,7 +114,8 @@ export const api = {
   },
 
   tenders: {
-    async analyzeUrl(url: string, modelName: string = "gpt-5.4-mini", demoMode: boolean = false) {
+    async analyzeUrl(url: string, modelName: string = "gpt-5.4-mini", demoMode: boolean = false, apiKey?: string) {
+      const effectiveKey = apiKey || getOpenAIKey();
       return request<{
         audit_id: number;
         report: any;
@@ -108,17 +125,28 @@ export const api = {
         remaining_credits: number;
       }>("/api/tenders/analyze-url", {
         method: "POST",
-        body: JSON.stringify({ url, model_name: modelName, demo_mode: demoMode }),
+        body: JSON.stringify({
+          url,
+          model_name: modelName,
+          demo_mode: demoMode,
+          api_key: effectiveKey || undefined,
+        }),
       });
     },
 
-    async analyzeFiles(files: File[], modelName: string = "gpt-5.4-mini", demoMode: boolean = false) {
+    async analyzeFiles(files: File[], modelName: string = "gpt-5.4-mini", demoMode: boolean = false, apiKey?: string) {
+      const effectiveKey = apiKey || getOpenAIKey();
       const formData = new FormData();
       for (const file of files) {
         formData.append("files", file);
       }
       formData.append("model_name", modelName);
       formData.append("demo_mode", String(demoMode));
+
+      const headers: Record<string, string> = {};
+      if (effectiveKey) {
+        headers["X-OpenAI-Key"] = effectiveKey;
+      }
 
       return request<{
         audit_id: number;
@@ -130,6 +158,7 @@ export const api = {
       }>("/api/tenders/analyze-files", {
         method: "POST",
         body: formData,
+        headers,
       });
     },
 

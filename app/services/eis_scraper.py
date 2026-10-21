@@ -50,11 +50,13 @@ _FILE_URL_PATTERN = re.compile(
 )
 
 # Допустимые расширения файлов
-_ALLOWED_EXTENSIONS = {".docx", ".pdf", ".doc", ".txt", ".zip"}
+_ALLOWED_EXTENSIONS = {".docx", ".pdf", ".doc", ".txt", ".zip", ".xlsx", ".xls"}
 
 # Content-Type → расширение
 _CONTENT_TYPE_EXT = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
     "application/msword": ".doc",
     "application/pdf": ".pdf",
     "text/plain": ".txt",
@@ -95,22 +97,21 @@ def _guess_filename(url: str, content_type: str, link_text: str) -> str:
     qs = parse_qs(parsed.query)
     uid = qs.get("uid", ["doc"])[0]
 
+    clean_text = link_text.strip()
+    match_ext = re.search(r'\.(docx|xlsx|pdf|doc|xls|zip|txt)\b', clean_text, re.IGNORECASE)
     ext = ""
-    for mime, e in _CONTENT_TYPE_EXT.items():
-        if mime in content_type.lower():
-            ext = e
-            break
-
-    if not ext:
-        for allowed in _ALLOWED_EXTENSIONS:
-            if allowed in link_text.lower():
-                ext = allowed
+    if match_ext:
+        ext = f".{match_ext.group(1).lower()}"
+        clean_text = clean_text[:match_ext.start()].strip()
+    else:
+        for mime, e in _CONTENT_TYPE_EXT.items():
+            if mime in content_type.lower():
+                ext = e
                 break
+        if not ext:
+            ext = ".docx"
 
-    if not ext:
-        ext = ".docx"
-
-    safe_label = re.sub(r"[^\w\s\-]", "", link_text.strip())[:50].strip()
+    safe_label = re.sub(r"[^\w\s\-]", "", clean_text)[:60].strip()
     safe_label = re.sub(r"\s+", "_", safe_label) if safe_label else uid
 
     return f"{safe_label}{ext}"
@@ -236,17 +237,112 @@ def _download_file(
         return None
 
 
+class EISFetchResult:
+    """Результат работы скрапера: файлы, номер закупки и извлеченные метаданные из ЕИС."""
+    def __init__(self, files: List[Tuple[str, bytes]], reg_number: str, metadata: Optional[dict] = None):
+        self.files = files
+        self.reg_number = reg_number
+        self.metadata = metadata or {"reg_number": reg_number}
+
+    def __iter__(self):
+        return iter((self.files, self.reg_number, self.metadata))
+
+    def __getitem__(self, idx):
+        return (self.files, self.reg_number, self.metadata)[idx]
+
+    def __len__(self):
+        return 3
+
+
 class EISScraper:
-    """Скрапер документов с портала ЕИС zakupki.gov.ru."""
+    """Скрапер документов и метаданных с портала ЕИС zakupki.gov.ru."""
+
+    @staticmethod
+    def extract_metadata_from_html(html: str, reg_number: str) -> dict:
+        """Извлекает ключевые сведения о закупке (НМЦК, заказчик, предмет, сроки, ИКЗ, ЭТП) из HTML."""
+        soup = BeautifulSoup(html, "html.parser")
+        data: dict = {}
+        for sec in soup.select('.cardMainInfo__section, .blockInfo__section'):
+            title = sec.select_one('.sectionMainInfo__header, .section__title')
+            body = sec.select_one('.sectionMainInfo__body, .section__info')
+            if title and body:
+                k = title.get_text(strip=True)
+                v = body.get_text(strip=True)
+                data[k] = v
+
+        # НМЦК
+        price_str = data.get("Начальная (максимальная) цена контракта")
+        clean_price: Optional[float] = None
+        if price_str:
+            try:
+                clean_price = float(re.sub(r"[^\d,]", "", price_str).replace(",", "."))
+            except Exception:
+                clean_price = None
+
+        # Предмет закупки
+        purchase_subject = data.get("Наименование объекта закупки")
+        if not purchase_subject:
+            subj_el = soup.select_one(".cardMainInfo__content, .cardMainInfo__data, h1")
+            if subj_el:
+                purchase_subject = subj_el.get_text(strip=True)
+
+        # Заказчик
+        customer_name = data.get("Организация, осуществляющая размещение") or data.get("Размещение осуществляет")
+
+        # ИКЗ, ИНН, КПП
+        ikz = data.get("Идентификационный код закупки (ИКЗ)")
+        customer_inn = None
+        customer_kpp = None
+        inn_match = re.search(r"ИНН[^\d]{1,15}(\d{10})\b", html)
+        if inn_match:
+            customer_inn = inn_match.group(1)
+        elif ikz and len(ikz) >= 21:
+            customer_inn = ikz[2:12]
+
+        kpp_match = re.search(r"КПП[^\d]{1,15}(\d{9})\b", html)
+        if kpp_match:
+            customer_kpp = kpp_match.group(1)
+        elif ikz and len(ikz) >= 21:
+            customer_kpp = ikz[12:21]
+
+        # Место и сроки
+        delivery_place = data.get("Место поставки товара, выполнения работы или оказания услуги") or data.get("Почтовый адрес")
+        delivery_term = data.get("Срок исполнения контракта")
+        if data.get("Количество этапов"):
+            delivery_term = f"{delivery_term} ({data.get('Количество этапов')} этапов)" if delivery_term else f"{data.get('Количество этапов')} этапов"
+
+        etp_name = data.get("Наименование электронной площадки в информационно-телекоммуникационной сети «Интернет»")
+        contract_guarantee = data.get("Размер обеспечения исполнения контракта")
+        app_guarantee = data.get("Размер обеспечения заявки")
+        deadline = data.get("Дата и время окончания срока подачи заявок")
+
+        return {
+            "reg_number": reg_number,
+            "purchase_subject": purchase_subject,
+            "nmck": clean_price,
+            "currency": "RUB",
+            "customer_name": customer_name,
+            "customer_inn": customer_inn,
+            "customer_kpp": customer_kpp,
+            "delivery_place": delivery_place,
+            "delivery_term": delivery_term,
+            "etp_name": etp_name,
+            "ikz": ikz,
+            "law_type": "44-ФЗ",
+            "contract_guarantee": contract_guarantee,
+            "application_guarantee": app_guarantee,
+            "submission_deadline": deadline,
+        }
 
     @staticmethod
     def fetch_documents(
         url: str,
         max_files: int = 10,
         timeout: int = 15,
-    ) -> Tuple[List[Tuple[str, bytes]], str]:
+    ) -> EISFetchResult:
         """
-        Скачивает документы закупки по ссылке с zakupki.gov.ru с поддержкой сессий и cookie.
+        Скачивает документы закупки и извлекает метаданные с zakupki.gov.ru с поддержкой сессий и cookie.
+        Возвращает EISFetchResult (files, reg_number, metadata).
         """
         if "zakupki.gov.ru" not in url:
             raise ValueError(f"Ссылка должна быть на zakupki.gov.ru. Получено: {url}")
@@ -317,5 +413,19 @@ class EISScraper:
                 f"Попробуйте загрузить файлы вручную."
             )
 
-        logger.info("Успешно скачано %d файлов для закупки №%s", len(downloaded), reg_number)
-        return downloaded, reg_number
+        # 4. Извлекаем официальные метаданные страницы сведений
+        metadata: dict = {"reg_number": reg_number}
+        common_info_url = re.sub(r"/view/[^?]+\.html", "/view/common-info.html", url)
+        if "/view/" not in common_info_url:
+            common_info_url = f"https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber={reg_number}"
+
+        try:
+            logger.info("Извлекаем метаданные закупки: %s", common_info_url)
+            common_html = _fetch_html(session, common_info_url, timeout=timeout)
+            if common_html:
+                metadata = EISScraper.extract_metadata_from_html(common_html, reg_number)
+        except Exception as e:
+            logger.warning("Не удалось извлечь метаданные из %s: %s", common_info_url, e)
+
+        logger.info("Успешно скачано %d файлов для закупки №%s (НМЦК: %s)", len(downloaded), reg_number, metadata.get("nmck"))
+        return EISFetchResult(downloaded, reg_number, metadata)

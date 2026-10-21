@@ -36,7 +36,7 @@ class ExtractionResult(BaseModel):
 class DocumentExtractor:
     """Сервис распаковки архивов и извлечения текста из DOCX, PDF и TXT."""
 
-    SUPPORTED_EXTENSIONS = {".docx", ".pdf", ".txt", ".md"}
+    SUPPORTED_EXTENSIONS = {".docx", ".doc", ".pdf", ".txt", ".md", ".xlsx", ".xls"}
 
     @classmethod
     def extract_from_multiple_files(cls, files: List[Tuple[str, bytes]]) -> ExtractionResult:
@@ -79,6 +79,14 @@ class DocumentExtractor:
                 total_chars=doc.char_count,
                 warnings=["Документ пуст"] if doc.char_count == 0 else []
             )
+        elif lower_name.endswith((".xlsx", ".xls")):
+            doc = cls._extract_xlsx(filename, file_bytes)
+            return ExtractionResult(
+                documents=[doc],
+                total_documents=1,
+                total_chars=doc.char_count,
+                warnings=["Таблица Excel пуста"] if doc.char_count == 0 else []
+            )
         elif lower_name.endswith(".pdf"):
             doc = cls._extract_pdf(filename, file_bytes)
             return ExtractionResult(
@@ -99,7 +107,7 @@ class DocumentExtractor:
                 documents=[],
                 total_documents=0,
                 total_chars=0,
-                warnings=[f"Формат файла '{filename}' не поддерживается. Загрузите .zip, .docx или .pdf."]
+                warnings=[f"Формат файла '{filename}' не поддерживается. Загрузите .zip, .docx, .xlsx или .pdf."]
             )
 
     @classmethod
@@ -290,4 +298,38 @@ class DocumentExtractor:
             page_count=max(1, len(full_text) // 2000),
             char_count=len(full_text),
         )
+
+    @classmethod
+    def _extract_xlsx(cls, filename: str, file_bytes: bytes) -> ExtractedDocument:
+        """Извлекает текст и таблицы из Excel (.xlsx/.xls) через openpyxl."""
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            sheets_text: List[str] = []
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows: List[str] = []
+                for row in ws.iter_rows(values_only=True):
+                    non_empty = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
+                    if non_empty:
+                        rows.append(" | ".join(non_empty))
+                if rows:
+                    sheets_text.append(f"--- Лист: {sheet_name} ---\n" + "\n".join(rows))
+            text = "\n\n".join(sheets_text)
+            return ExtractedDocument(
+                filename=filename,
+                file_type="xlsx",
+                text_content=text,
+                page_count=max(1, len(sheets_text)),
+                char_count=len(text)
+            )
+        except Exception as e:
+            return ExtractedDocument(
+                filename=filename,
+                file_type="xlsx",
+                text_content=f"[Ошибка чтения Excel таблицы: {str(e)}]",
+                page_count=1,
+                char_count=0
+            )
+
 

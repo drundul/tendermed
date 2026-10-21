@@ -88,9 +88,10 @@ def test_eis_scraper_fetch_documents_mock(mock_session_cls):
     mock_session.get.side_effect = [resp_page, resp_file]
     mock_session_cls.return_value = mock_session
 
-    files, reg = EISScraper.fetch_documents("https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326018834")
+    files, reg, metadata = EISScraper.fetch_documents("https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0142200001326018834")
     
     assert reg == "0142200001326018834"
+    assert metadata is not None
     assert len(files) == 1
     filename, content = files[0]
     assert filename == "Contract_Project.docx"

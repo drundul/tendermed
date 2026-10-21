@@ -270,12 +270,27 @@ class EISScraper:
                 v = body.get_text(strip=True)
                 data[k] = v
 
-        # НМЦК
-        price_str = data.get("Начальная (максимальная) цена контракта")
+        # НМЦК (включая закупки по цене единицы и с максимальным значением цены)
+        price_str = (
+            data.get("Начальная (максимальная) цена контракта")
+            or data.get("Максимальное значение цены контракта")
+            or data.get("Начальная цена")
+        )
+        if not price_str:
+            cost_el = soup.select_one(".cardMainInfo__content.cost, .cost, .price")
+            if cost_el:
+                price_str = cost_el.get_text(strip=True)
+
         clean_price: Optional[float] = None
         if price_str:
             try:
-                clean_price = float(re.sub(r"[^\d,]", "", price_str).replace(",", "."))
+                # Извлекаем первое числовое значение суммы
+                nums = re.findall(r"[\d\s]+(?:,\d{2})?", price_str)
+                for num_cand in nums:
+                    cand_cleaned = re.sub(r"[^\d,]", "", num_cand).replace(",", ".")
+                    if cand_cleaned and float(cand_cleaned) > 0:
+                        clean_price = float(cand_cleaned)
+                        break
             except Exception:
                 clean_price = None
 

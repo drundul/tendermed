@@ -96,6 +96,7 @@ def analyze_by_url(
         "execution_time_seconds": result.execution_time_seconds,
         "total_documents": result.total_documents,
         "anonymization_stats": result.anonymization_stats,
+        "optimization_stats": result.optimization_stats,
         "remaining_credits": current_user.available_credits,
     }
 
@@ -167,6 +168,7 @@ async def analyze_by_files(
         "execution_time_seconds": result.execution_time_seconds,
         "total_documents": result.total_documents,
         "anonymization_stats": result.anonymization_stats,
+        "optimization_stats": result.optimization_stats,
         "remaining_credits": current_user.available_credits,
     }
 

@@ -2,10 +2,11 @@ import time
 from typing import List, Optional, Tuple
 from pydantic import BaseModel, Field
 
-from app.models.schemas import FullAnalysisReport
+from app.models.schemas import FullAnalysisReport, ContextOptimizationStats
 from app.services.extractor import DocumentExtractor, ExtractedDocument
 from app.services.classifier import DocumentClassifier, DocumentType, ClassifiedDocument
 from app.services.anonymizer import DataAnonymizer, AnonymizationStats
+from app.services.context_optimizer import ContextOptimizer
 from app.services.llm_service import LLMService
 
 
@@ -18,6 +19,7 @@ class PipelineExecutionResult(BaseModel):
     classified_documents: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     anonymization_stats: AnonymizationStats = Field(default_factory=AnonymizationStats)
+    optimization_stats: Optional[ContextOptimizationStats] = None
 
 
 class TenderAnalyzerPipeline:
@@ -85,10 +87,7 @@ class TenderAnalyzerPipeline:
         classified = DocumentClassifier.classify_all(ext_result.documents)
 
         # 3. Формирование приоритезированного контекста для LLM
-        context_parts = []
-        doc_summaries = []
-
-        # Сортируем: сначала ТЗ и Контракт, затем Инфокарта, потом остальное
+        # 3. Интеллектуальная оптимизация и сжатие контекста перед отправкой в LLM (Token Optimization)
         priority_order = {
             DocumentType.TECH_SPEC: 1,
             DocumentType.CONTRACT_DRAFT: 2,
@@ -97,6 +96,7 @@ class TenderAnalyzerPipeline:
             DocumentType.OTHER: 5,
         }
         sorted_classified = sorted(classified, key=lambda c: priority_order.get(c.doc_type, 99))
+        doc_summaries = []
 
         for c_doc in sorted_classified:
             type_label = {
@@ -106,29 +106,29 @@ class TenderAnalyzerPipeline:
                 DocumentType.NMCK_JUSTIFICATION: "ОБОСНОВАНИЕ НМЦК",
                 DocumentType.OTHER: "ПРИЛОЖЕНИЕ",
             }.get(c_doc.doc_type, "ДОКУМЕНТ")
-
             doc_summaries.append(f"{c_doc.filename} -> [{type_label}]")
-            context_parts.append(
-                f"=====================================================\n"
-                f"ФАЙЛ: {c_doc.filename} (ТИП: {type_label})\n"
-                f"=====================================================\n"
-                f"{c_doc.text}\n\n"
-            )
 
-        full_context = "".join(context_parts)
+        # Применяем интеллектуальное удаление шума и выделение критических разделов
+        optimized_context, opt_stats = ContextOptimizer.optimize_classified_documents(sorted_classified)
 
         # 4. Запуск анализа: LLM (если есть ключ) или встроенный эвристический анализатор
         has_key = bool(self.llm_service.api_key or (user_api_key and user_api_key.strip()))
         if force_mock or not has_key:
             from app.services.heuristic_analyzer import HeuristicAnalyzer
-            report = HeuristicAnalyzer.analyze(sorted_classified, full_context, metadata=tender_metadata)
+            report = HeuristicAnalyzer.analyze(
+                sorted_classified, 
+                optimized_context, 
+                metadata=tender_metadata,
+                optimization_stats=opt_stats,
+            )
         else:
             try:
                 report = self.llm_service.analyze_tender(
-                    context_text=full_context,
+                    context_text=optimized_context,
                     model_name=model_name,
                     force_mock=False,
                     user_api_key=user_api_key,
+                    optimization_stats=opt_stats,
                 )
                 if tender_metadata:
                     if tender_metadata.get("nmck") and (not report.summary.nmck_rubles or report.summary.nmck_rubles == 0):
@@ -153,7 +153,12 @@ class TenderAnalyzerPipeline:
                         report.summary.ikz = tender_metadata["ikz"]
             except Exception as e:
                 from app.services.heuristic_analyzer import HeuristicAnalyzer
-                report = HeuristicAnalyzer.analyze(sorted_classified, full_context, metadata=tender_metadata)
+                report = HeuristicAnalyzer.analyze(
+                    sorted_classified, 
+                    optimized_context, 
+                    metadata=tender_metadata,
+                    optimization_stats=opt_stats,
+                )
                 report.verdict_summary = f"[ИИ API временно недоступен ({str(e)}). Аудит выполнен экспертным модулем 44-ФЗ]\n" + report.verdict_summary
 
         elapsed = round(time.time() - start_time, 2)
@@ -165,4 +170,5 @@ class TenderAnalyzerPipeline:
             classified_documents=doc_summaries,
             warnings=ext_result.warnings,
             anonymization_stats=total_anonymization_stats,
+            optimization_stats=opt_stats,
         )

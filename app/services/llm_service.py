@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import Optional
+from typing import Optional, Any
 from openai import OpenAI
 
 from app.config import settings
@@ -44,6 +44,7 @@ class LLMService:
         model_name: Optional[str] = None,
         force_mock: bool = False,
         user_api_key: Optional[str] = None,
+        optimization_stats: Optional[Any] = None,
     ) -> FullAnalysisReport:
         """Проводит анализ документации через OpenAI или возвращает демонстрационный отчет."""
         effective_model = model_name or settings.openai_model_smart
@@ -51,7 +52,9 @@ class LLMService:
         # 1. Если принудительно запрошен демо-режим:
         if force_mock:
             logger.info("Возврат эталонного демонстрационного отчета (force_mock=True).")
-            return self._generate_mock_report()
+            mock_rep = self._generate_mock_report()
+            mock_rep.optimization_stats = optimization_stats
+            return mock_rep
 
         # 2. Выбираем клиент (пользовательский ключ или системный)
         active_client = self.client
@@ -88,6 +91,7 @@ class LLMService:
                 report.analysis_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 report.model_used = f"OpenAI {effective_model}"
                 report.is_mock = False
+                report.optimization_stats = optimization_stats
                 try:
                     from app.services.fas_generator import FASComplaintGenerator
                     report.fas_complaint = FASComplaintGenerator.generate(report)

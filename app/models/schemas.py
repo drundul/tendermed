@@ -138,6 +138,15 @@ class FASComplaint(BaseModel):
     created_date: Optional[str] = Field(default=None, description="Дата составления жалобы")
 
 
+class ContextOptimizationStats(BaseModel):
+    """Статистика оптимизации и сжатия контекста документов перед отправкой в LLM."""
+    original_characters: int = Field(default=0, description="Исходный объем текста документов (символы)")
+    optimized_characters: int = Field(default=0, description="Объем текста после удаления шума и сжатия (символы)")
+    saved_tokens_approx: int = Field(default=0, description="Примерное число сэкономленных токенов OpenAI")
+    compression_ratio_percent: float = Field(default=0.0, description="Процент сжатия")
+    preserved_sections: List[str] = Field(default_factory=list, description="Ключевые сохраненные разделы")
+
+
 class FullAnalysisReport(BaseModel):
     """Полный структурированный отчет ИИ-экспертизы тендера."""
     verdict: TrafficLightVerdict = Field(description="Итоговый светофор (GREEN / YELLOW / RED)")
@@ -154,6 +163,10 @@ class FullAnalysisReport(BaseModel):
     fas_complaint: Optional[FASComplaint] = Field(
         default=None,
         description="Сгенерированная официальная жалоба в ФАС России (ст. 105 44-ФЗ)"
+    )
+    optimization_stats: Optional[ContextOptimizationStats] = Field(
+        default=None,
+        description="Метрики сжатия контекста и экономии токенов OpenAI"
     )
     analysis_timestamp: Optional[str] = Field(default=None, description="Время проведения анализа")
     model_used: Optional[str] = Field(default=None, description="Использованная модель ИИ")

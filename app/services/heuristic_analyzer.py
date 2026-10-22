@@ -32,6 +32,7 @@ class HeuristicAnalyzer:
         classified_docs: List[ClassifiedDocument],
         full_context: str,
         metadata: Optional[Dict[str, Any]] = None,
+        optimization_stats: Optional[Any] = None,
     ) -> FullAnalysisReport:
         metadata = metadata or {}
         reg_number = metadata.get("reg_number", "Н/Д")
@@ -85,6 +86,7 @@ class HeuristicAnalyzer:
             med_compliance=compliance,
             equipment=equipment,
             clarification_requests=inquiries,
+            optimization_stats=optimization_stats,
             is_mock=True,
             model_used="TenderMed Heuristic Engine (44-ФЗ Ruleset)",
             analysis_timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

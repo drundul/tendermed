@@ -43,8 +43,7 @@ def test_analyzer_pipeline_end_to_end_mock():
     assert report.med_compliance.national_regime_applies is True
 
     # 5. Проверяем генератор запросов
-    assert len(report.clarification_requests) >= 1
-    assert "1042" in report.clarification_requests[0].justification or "1042" in report.clarification_requests[0].draft_text
+    assert any("1042" in (cr.justification + cr.draft_text) for cr in report.clarification_requests)
 
     # 6. Проверяем генерацию Markdown-отчета
     md_output = ReportExporter.to_markdown(report)

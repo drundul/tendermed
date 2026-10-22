@@ -641,6 +641,31 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Статистика сжатия и оптимизации токенов */}
+            {report.optimization_stats && report.optimization_stats.original_characters > 0 && (
+              <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                      <span>Оптимизация контекста (Boilerplate Stripper)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                        -{report.optimization_stats.compression_ratio_percent}% шума
+                      </span>
+                    </div>
+                    <div className="text-slate-600 mt-0.5">
+                      Сжатие: {report.optimization_stats.original_characters.toLocaleString("ru-RU")} → {report.optimization_stats.optimized_characters.toLocaleString("ru-RU")} симв. • Сэкономлено ~{report.optimization_stats.saved_tokens_approx.toLocaleString("ru-RU")} токенов OpenAI
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right text-[11px] text-slate-500 font-medium">
+                  Сохранено разделов: <b className="text-slate-800">{report.optimization_stats.preserved_sections?.length || 0}</b> (100% таблиц ТЗ и рисков)
+                </div>
+              </div>
+            )}
+
             {/* ГЛАВНЫЙ БАННЕР ВЕРДИКТА */}
             <div
               className={`p-6 sm:p-8 rounded-2xl text-white shadow-lg ${

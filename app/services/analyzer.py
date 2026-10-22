@@ -151,6 +151,27 @@ class TenderAnalyzerPipeline:
                         report.summary.notice_number = tender_metadata["reg_number"]
                     if tender_metadata.get("ikz") and not report.summary.ikz:
                         report.summary.ikz = tender_metadata["ikz"]
+                    if not report.summary.customer_address and tender_metadata.get("delivery_place"):
+                        report.summary.customer_address = tender_metadata["delivery_place"]
+                    if report.summary.contract_guarantee_percent is None and tender_metadata.get("contract_guarantee"):
+                        m_cg = re.search(r"([\d\.,]+)\s*%", str(tender_metadata["contract_guarantee"]))
+                        if m_cg:
+                            try:
+                                report.summary.contract_guarantee_percent = float(m_cg.group(1).replace(",", "."))
+                            except ValueError:
+                                pass
+                    if report.summary.application_guarantee_percent is None and tender_metadata.get("application_guarantee"):
+                        m_ag = re.search(r"([\d\.,]+)\s*%", str(tender_metadata["application_guarantee"]))
+                        if m_ag:
+                            try:
+                                report.summary.application_guarantee_percent = float(m_ag.group(1).replace(",", "."))
+                            except ValueError:
+                                pass
+                    if report.summary.advance_percent is None and tender_metadata.get("advance_percent") is not None:
+                        try:
+                            report.summary.advance_percent = float(tender_metadata["advance_percent"])
+                        except (ValueError, TypeError):
+                            pass
             except Exception as e:
                 from app.services.heuristic_analyzer import HeuristicAnalyzer
                 report = HeuristicAnalyzer.analyze(

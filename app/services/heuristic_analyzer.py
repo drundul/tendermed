@@ -145,6 +145,24 @@ class HeuristicAnalyzer:
         delivery_place = meta.get("delivery_place") or "В соответствии с проектом контракта и ТЗ"
         delivery_term = meta.get("delivery_term") or "В соответствии с графиком поставки"
 
+        cg_pct = 5.0
+        if meta.get("contract_guarantee"):
+            m_cg = re.search(r"([\d\.,]+)\s*%", str(meta["contract_guarantee"]))
+            if m_cg:
+                try:
+                    cg_pct = float(m_cg.group(1).replace(",", "."))
+                except ValueError:
+                    pass
+
+        ag_pct = 1.0
+        if meta.get("application_guarantee"):
+            m_ag = re.search(r"([\d\.,]+)\s*%", str(meta["application_guarantee"]))
+            if m_ag:
+                try:
+                    ag_pct = float(m_ag.group(1).replace(",", "."))
+                except ValueError:
+                    pass
+
         return TenderSummary(
             purchase_subject=subj,
             law_type=meta.get("law_type", "44-ФЗ"),
@@ -158,8 +176,8 @@ class HeuristicAnalyzer:
             customer_signer=meta.get("authorized_person"),
             nmck_rubles=float(nmck),
             advance_percent=0.0,
-            contract_guarantee_percent=5.0,
-            application_guarantee_percent=1.0,
+            contract_guarantee_percent=cg_pct,
+            application_guarantee_percent=ag_pct,
             delivery_deadline=delivery_term,
             delivery_place=delivery_place,
             payment_terms_days=7,

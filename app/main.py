@@ -13,6 +13,7 @@ from app.db import models  # noqa: F401 - регистрируем модели 
 from app.api.auth import router as auth_router
 from app.api.tenders import router as tenders_router
 from app.api.exports import router as exports_router
+from app.api.billing import router as billing_router
 
 # Создание таблиц БД при запуске
 Base.metadata.create_all(bind=engine)
@@ -42,6 +43,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(tenders_router)
 app.include_router(exports_router)
+app.include_router(billing_router)
 
 
 @app.get("/api/health")

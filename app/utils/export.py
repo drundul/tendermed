@@ -13,6 +13,7 @@ from app.models.schemas import (
     RiskSeverity,
     ClarificationRequest,
     TenderSummary,
+    FASComplaint,
 )
 
 
@@ -625,6 +626,189 @@ class ReportExporter:
             sig_r.font.name = "Arial"
             sig_r.font.size = Pt(10)
             sig_r.font.bold = True
+
+        bio = io.BytesIO()
+        doc.save(bio)
+        return bio.getvalue()
+
+    @classmethod
+    def export_fas_complaint_docx(cls, complaint: FASComplaint) -> bytes:
+        """Генерирует официальную жалобу в ФАС России в формате Microsoft Word (.docx)."""
+        doc = Document()
+
+        # Поля страницы: стандартные делопроизводственные (2 см)
+        for section in doc.sections:
+            section.top_margin = Inches(0.8)
+            section.bottom_margin = Inches(0.8)
+            section.left_margin = Inches(1.0)
+            section.right_margin = Inches(0.6)
+
+        # 1. Шапка адресата и сторон (таблица 2 колонки, реквизиты справа)
+        header_table = doc.add_table(rows=1, cols=2)
+        header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        left_cell = header_table.cell(0, 0)
+        right_cell = header_table.cell(0, 1)
+        left_cell.width = Inches(2.3)
+        right_cell.width = Inches(4.7)
+
+        def add_header_line(label: str, val: str, bold_label: bool = True):
+            p = right_cell.add_paragraph()
+            p.paragraph_format.line_spacing = 1.1
+            p.paragraph_format.space_after = Pt(2)
+            r1 = p.add_run(f"{label}: ")
+            r1.font.name = "Times New Roman"
+            r1.font.size = Pt(9.5)
+            r1.font.bold = bold_label
+            r2 = p.add_run(val)
+            r2.font.name = "Times New Roman"
+            r2.font.size = Pt(9.5)
+
+        # В УФАС
+        p_to = right_cell.paragraphs[0]
+        p_to.paragraph_format.line_spacing = 1.15
+        p_to.paragraph_format.space_after = Pt(3)
+        r_to = p_to.add_run(f"В {complaint.fas_authority_name}\n")
+        r_to.font.name = "Times New Roman"
+        r_to.font.size = Pt(10)
+        r_to.font.bold = True
+        if complaint.fas_address:
+            r_addr = p_to.add_run(f"Адрес: {complaint.fas_address}\n")
+            r_addr.font.name = "Times New Roman"
+            r_addr.font.size = Pt(9)
+            r_addr.font.italic = True
+
+        add_header_line("Заявитель", f"{complaint.applicant_name} (ИНН: {complaint.applicant_inn or 'указывается Заявителем'})\nКонтакты: {complaint.applicant_contacts or 'info@supplier.ru'}")
+        add_header_line("Заказчик", f"{complaint.customer_name}\nИНН/КПП: {complaint.customer_inn} / {complaint.customer_kpp}\nАдрес: {complaint.customer_address or 'По данным ЕИС'}")
+        add_header_line("Оператор ЭТП", complaint.etp_name or "ЭТП")
+        add_header_line("Извещение №", f"{complaint.notice_number} в ЕИС (zakupki.gov.ru)")
+        add_header_line("НМЦК", complaint.nmck_formatted)
+
+        doc.add_paragraph().paragraph_format.space_after = Pt(8)
+
+        # 2. Заголовок документа
+        title_p = doc.add_paragraph()
+        title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_p.paragraph_format.space_after = Pt(4)
+        title_p.paragraph_format.space_before = Pt(8)
+        r_title = title_p.add_run("ЖАЛОБА")
+        r_title.font.name = "Times New Roman"
+        r_title.font.size = Pt(14)
+        r_title.font.bold = True
+
+        sub_p = doc.add_paragraph()
+        sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sub_p.paragraph_format.space_after = Pt(14)
+        r_sub = sub_p.add_run(
+            f"на положения извещения и документации об осуществлении закупки № {complaint.notice_number}\n"
+            f"(в порядке статей 105, 106 Федерального закона от 05.04.2013 № 44-ФЗ)"
+        )
+        r_sub.font.name = "Times New Roman"
+        r_sub.font.size = Pt(11)
+        r_sub.font.bold = True
+
+        # 3. Вводная часть
+        intro_p = doc.add_paragraph()
+        intro_p.paragraph_format.line_spacing = 1.15
+        intro_p.paragraph_format.first_line_indent = Inches(0.4)
+        intro_p.paragraph_format.space_after = Pt(8)
+        intro_r = intro_p.add_run(
+            f"В единой информационной системе в сфере закупок (zakupki.gov.ru) Заказчиком — {complaint.customer_name} — "
+            f"было размещено извещение № {complaint.notice_number} о проведении электронного аукциона на «{complaint.purchase_subject}» "
+            f"с начальной (максимальной) ценой контракта {complaint.nmck_formatted} на электронной торговой площадке {complaint.etp_name}.\n"
+            f"Заявитель ({complaint.applicant_name}) имеет намерение принять участие в указанной закупке. "
+            f"Однако при анализе положений извещения, описания объекта закупки (ТЗ) и проекта контракта "
+            f"были выявлены существенные нарушения требований Федерального закона № 44-ФЗ и Федерального закона № 135-ФЗ «О защите конкуренции», "
+            f"ограничивающие круг участников закупки и делающие подачу заявки невозможной."
+        )
+        intro_r.font.name = "Times New Roman"
+        intro_r.font.size = Pt(11)
+
+        # 4. Эпизоды нарушений
+        for ep in complaint.episodes:
+            ep_header_p = doc.add_paragraph()
+            ep_header_p.paragraph_format.space_before = Pt(10)
+            ep_header_p.paragraph_format.space_after = Pt(3)
+            ep_hr = ep_header_p.add_run(f"Эпизод {ep.number}. {ep.title}")
+            ep_hr.font.name = "Times New Roman"
+            ep_hr.font.size = Pt(11.5)
+            ep_hr.font.bold = True
+
+            # Норма права
+            norm_p = doc.add_paragraph()
+            norm_p.paragraph_format.space_after = Pt(4)
+            norm_r = norm_p.add_run(f"Нарушенные нормы: {ep.violated_norms}")
+            norm_r.font.name = "Times New Roman"
+            norm_r.font.size = Pt(10)
+            norm_r.font.bold = True
+            norm_r.font.color.rgb = cls.COLOR_PRIMARY
+
+            # Обстоятельства
+            circ_p = doc.add_paragraph()
+            circ_p.paragraph_format.line_spacing = 1.15
+            circ_p.paragraph_format.first_line_indent = Inches(0.4)
+            circ_p.paragraph_format.space_after = Pt(4)
+            circ_r = circ_p.add_run(ep.circumstances)
+            circ_r.font.name = "Times New Roman"
+            circ_r.font.size = Pt(10.5)
+
+            # Правовое обоснование
+            arg_p = doc.add_paragraph()
+            arg_p.paragraph_format.line_spacing = 1.15
+            arg_p.paragraph_format.first_line_indent = Inches(0.4)
+            arg_p.paragraph_format.space_after = Pt(8)
+            arg_r = arg_p.add_run(ep.legal_argumentation)
+            arg_r.font.name = "Times New Roman"
+            arg_r.font.size = Pt(10.5)
+
+        # 5. Просительная часть (ПРОШУ)
+        proshu_title_p = doc.add_paragraph()
+        proshu_title_p.paragraph_format.space_before = Pt(12)
+        proshu_title_p.paragraph_format.space_after = Pt(6)
+        proshu_title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pr_tr = proshu_title_p.add_run("На основании вышеизложенного, руководствуясь ст. 99, 105, 106 Федерального закона № 44-ФЗ, ст. 17 Федерального закона № 135-ФЗ,\n\nПРОШУ:")
+        pr_tr.font.name = "Times New Roman"
+        pr_tr.font.size = Pt(12)
+        pr_tr.font.bold = True
+
+        for i, item in enumerate(complaint.petitum, 1):
+            item_p = doc.add_paragraph()
+            item_p.paragraph_format.line_spacing = 1.15
+            item_p.paragraph_format.first_line_indent = Inches(0.4)
+            item_p.paragraph_format.space_after = Pt(3)
+            ir = item_p.add_run(f"{i}. {item}")
+            ir.font.name = "Times New Roman"
+            ir.font.size = Pt(10.5)
+
+        # 6. Приложения
+        if complaint.attachments:
+            att_title_p = doc.add_paragraph()
+            att_title_p.paragraph_format.space_before = Pt(10)
+            att_title_p.paragraph_format.space_after = Pt(3)
+            atr = att_title_p.add_run("Приложения:")
+            atr.font.name = "Times New Roman"
+            atr.font.size = Pt(10.5)
+            atr.font.bold = True
+
+            for att in complaint.attachments:
+                att_p = doc.add_paragraph()
+                att_p.paragraph_format.first_line_indent = Inches(0.4)
+                att_p.paragraph_format.space_after = Pt(2)
+                ar = att_p.add_run(att)
+                ar.font.name = "Times New Roman"
+                ar.font.size = Pt(10)
+
+        # 7. Подпись и дата
+        doc.add_paragraph().paragraph_format.space_after = Pt(16)
+        sig_p = doc.add_paragraph()
+        sig_p.paragraph_format.line_spacing = 1.3
+        sig_r = sig_p.add_run(
+            f"«____» _______________ 2026 г.\n\n"
+            f"Руководитель / Уполномоченный представитель {complaint.applicant_name}:\n\n"
+            f"_______________________ / _______________________ /\n\n"
+            f"М.П. (при наличии)"
+        )
+        sig_r.font.name = "Times New Roman"
+        sig_r.font.size = Pt(10.5)
 
         bio = io.BytesIO()
         doc.save(bio)

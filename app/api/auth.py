@@ -45,13 +45,61 @@ def get_current_user(
     return user
 
 
-DISPOSABLE_DOMAINS = {
-    "temp-mail.org", "tempmail.com", "temp-mail.io", "guerrillamail.com",
-    "10minutemail.com", "mailinator.com", "trashmail.com", "yopmail.com",
-    "fakeinbox.com", "dispostable.com", "getairmail.com", "mohmal.com",
-    "dropmail.me", "crazymailing.com", "throwawaymail.com", "sharklasers.com",
-    "grr.la", "guerrillamail.biz", "guerrillamail.net", "guerrillamail.org",
+# Белый список доверенных почтовых сервисов РФ и международных провайдеров
+TRUSTED_EMAIL_DOMAINS = {
+    # Яндекс
+    "yandex.ru", "ya.ru", "yandex.com", "yandex.by", "yandex.kz",
+    # VK / Mail.ru Group
+    "mail.ru", "bk.ru", "inbox.ru", "list.ru", "internet.ru", "vk.com",
+    # Google
+    "gmail.com", "googlemail.com",
+    # Rambler Group
+    "rambler.ru", "lenta.ru", "autorambler.ru", "myrambler.ru", "ro.ru",
+    # Microsoft
+    "outlook.com", "hotmail.com", "live.com", "msn.com",
+    # Apple
+    "icloud.com", "me.com", "mac.com",
+    # Yahoo / Proton
+    "yahoo.com", "proton.me", "protonmail.com",
+    # Тестовые домены для разработки
+    "test.com", "example.com",
 }
+
+DISPOSABLE_KEYWORDS = [
+    "temp", "dispos", "throwaway", "fake", "trash", "drop", "shark", "guerrilla",
+    "mailinator", "10minute", "mohmal", "crazymail", "grr", "vebux", "fextbox",
+    "disbox", "inboxkitten", "burner", "anon", "nowmymail", "generator"
+]
+
+
+def is_allowed_email(email: str) -> bool:
+    """
+    Проверяет email на соответствие политике безопасности:
+    1. Известные почтовые сервисы (Яндекс, Mail.ru, Gmail, Rambler, Outlook, iCloud и др.)
+    2. Надежные национальные корпоративные домены (.ru, .рф, .su), если они не содержат признаков одноразовых почт
+    3. Случайные noname международные домены (.com, .org, .net, .io, .site, etc.), не входящие в белый список, блокируются.
+    """
+    if "@" not in email:
+        return False
+    parts = email.split("@")
+    if len(parts) != 2:
+        return False
+    domain = parts[1].lower().strip()
+
+    if any(kw in domain for kw in DISPOSABLE_KEYWORDS):
+        return False
+
+    # 1. Если домен в прямом белом списке известных сервисов
+    if domain in TRUSTED_EMAIL_DOMAINS:
+        return True
+
+    # 2. Если домен в национальной зоне РФ (.ru, .рф, .su) и имеет формат корпоративного сайта
+    if domain.endswith((".ru", ".рф", ".su")):
+        domain_name = domain.rsplit(".", 1)[0]
+        if len(domain_name) >= 3 and not any(kw in domain_name for kw in DISPOSABLE_KEYWORDS):
+            return True
+
+    return False
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -59,14 +107,16 @@ def register(payload: UserRegisterRequest, db: Session = Depends(get_db)):
     """Регистрация нового пользователя с начислением 3 бесплатных аудитов."""
     clean_email = payload.email.lower().strip()
 
-    # Защита от регистрации через временные почты (temp-mail)
-    if "@" in clean_email:
-        domain = clean_email.split("@")[1]
-        if domain in DISPOSABLE_DOMAINS or any(kw in domain for kw in ["temp-mail", "tempmail", "throwaway", "dispostable", "fakeinbox"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Регистрация с временных почтовых сервисов (temp-mail) ограничена. Пожалуйста, укажите постоянную рабочую или личную почту (например, @mail.ru, @yandex.ru, @gmail.com или корпоративную).",
-            )
+    # Защита от регистрации через временные и одноразовые почты (temp-mail и noname домены)
+    if not is_allowed_email(clean_email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Регистрация разрешена только с официальных почтовых сервисов "
+                "(Яндекс, Mail.ru, Gmail, Rambler, Outlook, VK, iCloud) или корпоративных почт российских компаний (.ru / .рф). "
+                "Использование временных и анонимных почтовых ящиков ограничено для защиты сервиса."
+            ),
+        )
 
     existing_user = db.query(User).filter(User.email == clean_email).first()
     if existing_user:

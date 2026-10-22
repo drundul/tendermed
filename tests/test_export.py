@@ -107,3 +107,20 @@ def test_export_docx_all_clarifications(sample_report):
     doc = Document(io.BytesIO(docx_bytes))
     full_text = " ".join(p.text for p in doc.paragraphs)
     assert "ЗАПРОС" in full_text
+
+
+def test_export_docx_fas_complaint(sample_report):
+    from app.services.fas_generator import FASComplaintGenerator
+    complaint = FASComplaintGenerator.generate(sample_report, applicant_name="ООО МедТех")
+    assert complaint.fas_authority_name is not None
+    assert "Самарск" in complaint.fas_authority_name
+    assert len(complaint.episodes) >= 1
+    assert len(complaint.petitum) >= 3
+
+    docx_bytes = ReportExporter.export_fas_complaint_docx(complaint)
+    assert len(docx_bytes) > 0
+    doc = Document(io.BytesIO(docx_bytes))
+    full_text = " ".join(p.text for p in doc.paragraphs)
+    assert "ЖАЛОБА" in full_text
+    assert "ПРОШУ" in full_text
+    assert "ООО МедТех" in " ".join(c.text for t in doc.tables for r in t.rows for c in r.cells)

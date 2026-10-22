@@ -101,6 +101,43 @@ class ClarificationRequest(BaseModel):
     draft_text: str = Field(description="Полный официальный текст письма-запроса, готовый к подаче на ЭТП")
 
 
+class FASComplaintEpisode(BaseModel):
+    """Отдельный эпизод нарушения законодательства о контрактной системе для жалобы в ФАС."""
+    number: int
+    title: str = Field(description="Краткий заголовок эпизода нарушения")
+    violated_norms: str = Field(description="Нарушенные нормы права (44-ФЗ, 135-ФЗ, ПП РФ)")
+    circumstances: str = Field(description="Фактические обстоятельства дела с цитатами из документации")
+    legal_argumentation: str = Field(description="Правовая позиция заявителя и ссылки на практику ФАС и судов РФ")
+
+
+class FASComplaint(BaseModel):
+    """Официальная жалоба в ФАС России (по ст. 105 Федерального закона № 44-ФЗ)."""
+    fas_authority_name: str = Field(description="Наименование территориального органа ФАС России")
+    fas_address: Optional[str] = Field(default=None, description="Адрес территориального УФАС")
+    applicant_name: str = Field(default="Участник закупки", description="Наименование организации / ИП заявителя")
+    applicant_inn: Optional[str] = Field(default=None, description="ИНН заявителя")
+    applicant_contacts: Optional[str] = Field(default=None, description="Контакты заявителя")
+    
+    customer_name: str = Field(description="Полное наименование заказчика")
+    customer_inn: Optional[str] = Field(default=None, description="ИНН заказчика")
+    customer_kpp: Optional[str] = Field(default=None, description="КПП заказчика")
+    customer_address: Optional[str] = Field(default=None, description="Адрес места нахождения заказчика")
+    
+    etp_name: Optional[str] = Field(default="ЭТП", description="Оператор электронной площадки")
+    notice_number: str = Field(description="Реестровый номер извещения в ЕИС")
+    purchase_subject: str = Field(description="Объект закупки")
+    nmck_formatted: str = Field(description="Начальная (максимальная) цена контракта")
+    
+    complaint_title: str = Field(
+        default="ЖАЛОБА на положения извещения и документации об электронном аукционе (в порядке ст. 105 44-ФЗ)",
+        description="Заголовок документа"
+    )
+    episodes: List[FASComplaintEpisode] = Field(default_factory=list, description="Список эпизодов нарушений")
+    petitum: List[str] = Field(default_factory=list, description="Требования заявителя (ПРОШУ)")
+    attachments: List[str] = Field(default_factory=list, description="Приложения к жалобе")
+    created_date: Optional[str] = Field(default=None, description="Дата составления жалобы")
+
+
 class FullAnalysisReport(BaseModel):
     """Полный структурированный отчет ИИ-экспертизы тендера."""
     verdict: TrafficLightVerdict = Field(description="Итоговый светофор (GREEN / YELLOW / RED)")
@@ -113,6 +150,10 @@ class FullAnalysisReport(BaseModel):
     clarification_requests: List[ClarificationRequest] = Field(
         default_factory=list, 
         description="Готовые проекты запросов на разъяснение положений документации"
+    )
+    fas_complaint: Optional[FASComplaint] = Field(
+        default=None,
+        description="Сгенерированная официальная жалоба в ФАС России (ст. 105 44-ФЗ)"
     )
     analysis_timestamp: Optional[str] = Field(default=None, description="Время проведения анализа")
     model_used: Optional[str] = Field(default=None, description="Использованная модель ИИ")
@@ -188,4 +229,45 @@ class AuditSummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ===================== BILLING & PRICING SCHEMAS =====================
+
+class BillingPlan(BaseModel):
+    id: str
+    name: str
+    tagline: str
+    price_rubles: int
+    credits_count: int
+    price_per_audit: str
+    badge: Optional[str] = None
+    popular: bool = False
+    features: List[str]
+
+
+class CreatePaymentRequest(BaseModel):
+    plan_id: str
+    payment_method: Optional[str] = "card"
+
+
+class PaymentTransactionResponse(BaseModel):
+    id: int
+    plan_id: str
+    plan_name: str
+    amount_rubles: int
+    credits_added: int
+    status: str
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class PaymentSuccessResponse(BaseModel):
+    success: bool
+    transaction_id: int
+    plan_name: str
+    credits_added: int
+    new_credits_balance: int
+    message: str
 

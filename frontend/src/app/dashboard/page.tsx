@@ -24,6 +24,10 @@ import {
   Layers,
   History,
   KeyRound,
+  Gavel,
+  CreditCard,
+  Check,
+  X,
 } from "lucide-react";
 import { api, getToken, getOpenAIKey, setOpenAIKey } from "@/lib/api";
 
@@ -58,8 +62,14 @@ export default function DashboardPage() {
 
   // История
   const [history, setHistory] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<"risks" | "med" | "eq" | "inquiry" | "export">("risks");
+  const [activeTab, setActiveTab] = useState<"risks" | "med" | "eq" | "inquiry" | "fas" | "export">("risks");
   const [riskFilter, setRiskFilter] = useState<"all" | "high" | "medium">("all");
+
+  // Биллинг и тарифы
+  const [showBillingModal, setShowBillingModal] = useState(false);
+  const [billingPlans, setBillingPlans] = useState<any[]>([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingMsg, setBillingMsg] = useState("");
 
   // Загрузка пользователя и истории при входе
   useEffect(() => {
@@ -166,6 +176,80 @@ export default function DashboardPage() {
     }
   };
 
+  const openBillingModal = async () => {
+    setShowBillingModal(true);
+    setBillingMsg("");
+    try {
+      const res = await api.billing.getPlans();
+      setBillingPlans(res.plans);
+    } catch {
+      setBillingPlans([
+        {
+          id: "start",
+          name: "Старт",
+          price_rub: 1900,
+          credits: 10,
+          price_per_audit: 190,
+          description: "Для разовых и небольших закупок",
+          features: [
+            "10 полных экспертных проверок",
+            "Анализ РУ Росздравнадзора и КТРУ",
+            "Выявление закладок и нереалистичных сроков",
+            "Генератор официальных запросов в Word (.docx)",
+            "Генератор жалоб в ФАС по ст. 105 44-ФЗ (.docx)",
+          ],
+        },
+        {
+          id: "pro",
+          name: "Профи",
+          price_rub: 5900,
+          credits: 50,
+          price_per_audit: 118,
+          description: "Оптимально для активных тендерных отделов",
+          is_popular: true,
+          features: [
+            "50 полных экспертных проверок",
+            "Приоритетный доступ к нейросетевому анализу",
+            "Пакетная выгрузка всех запросов в Word (.docx)",
+            "Готовая жалоба в территориальное УФАС (.docx)",
+            "Экономия 38% по сравнению с тарифом Старт",
+          ],
+        },
+        {
+          id: "corp",
+          name: "Корпоративный",
+          price_rub: 14900,
+          credits: 200,
+          price_per_audit: 74,
+          description: "Для крупных дистрибьюторов и производителей",
+          features: [
+            "200 полных экспертных проверок",
+            "Неограниченная загрузка больших архивов ТЗ",
+            "Анализ эквивалентности и торговых марок",
+            "Персональный шаблон жалобы с реквизитами компании",
+            "Максимальная выгода (74 ₽ за аудит)",
+          ],
+        },
+      ]);
+    }
+  };
+
+  const handleBuyPlan = async (planId: string) => {
+    setBillingLoading(true);
+    setBillingMsg("");
+    try {
+      const res = await api.billing.checkout(planId);
+      setBillingMsg(`🎉 Баланс успешно пополнен на ${res.added_credits} проверок! Теперь у вас ${res.new_total_credits} проверок.`);
+      if (user) {
+        setUser({ ...user, available_credits: res.new_total_credits });
+      }
+    } catch (err: any) {
+      setBillingMsg(`Ошибка: ${err.message || "Не удалось завершить транзакцию"}`);
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
   const report = auditResult?.report;
 
   return (
@@ -194,9 +278,24 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 bg-sky-50 border border-sky-200 text-sky-800 px-3 py-1 rounded-full text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Проверок: {user.available_credits}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={openBillingModal}
+                    title="Нажмите, чтобы пополнить проверки"
+                    className="inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Проверок: {user.available_credits}</span>
+                    <span className="ml-1 text-[11px] text-sky-600 font-extrabold">+</span>
+                  </button>
+
+                  <button
+                    onClick={openBillingModal}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Тарифы</span>
+                  </button>
                 </div>
 
                 <button
@@ -700,6 +799,22 @@ export default function DashboardPage() {
                   📝 Официальные запросы в Word ({report.clarification_requests?.length || 0})
                 </button>
                 <button
+                  onClick={() => setActiveTab("fas")}
+                  className={`py-3.5 px-5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    activeTab === "fas"
+                      ? "border-red-600 text-red-600 bg-white"
+                      : "border-transparent text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Gavel className="w-4 h-4 text-red-600" />
+                  <span>⚖️ Жалоба в ФАС</span>
+                  {report.fas_complaint && (
+                    <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">
+                      ст. 105
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setActiveTab("export")}
                   className={`py-3.5 px-5 text-sm font-semibold border-b-2 whitespace-nowrap transition-all ${
                     activeTab === "export"
@@ -967,14 +1082,137 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* 5. ВКЛАДКА: ЭКСПОРТ ОТЧЕТА */}
+                {/* 5. ВКЛАДКА: ЖАЛОБА В ФАС (СТ. 105 44-ФЗ) */}
+                {activeTab === "fas" && (
+                  <div className="space-y-6">
+                    {report.fas_complaint ? (
+                      <>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-2xl">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold uppercase bg-red-600 text-white px-2 py-0.5 rounded">
+                                ст. 105 44-ФЗ
+                              </span>
+                              <h4 className="font-bold text-base text-red-950">
+                                Официальная жалоба в контрольный орган (ФАС России)
+                              </h4>
+                            </div>
+                            <div className="text-xs text-red-900 mt-1">
+                              Сформирована автоматически на основании критических нарушений законодательства о контрактной системе.
+                            </div>
+                          </div>
+                          <button
+                            onClick={() =>
+                              api.exports.downloadFasComplaintDocx(
+                                auditResult.audit_id,
+                                report.summary.notice_number
+                              )
+                            }
+                            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md shadow-red-200 shrink-0 transition-all cursor-pointer"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Скачать жалобу в Word (.docx)</span>
+                          </button>
+                        </div>
+
+                        {/* Шапка жалобы */}
+                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                            Адресация и стороны
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                            <div className="space-y-2">
+                              <div>
+                                <span className="font-semibold text-slate-700">В орган ФАС: </span>
+                                <span className="text-slate-900 font-bold">
+                                  {report.fas_complaint.fas_authority_name}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-700">Заявитель: </span>
+                                <span className="text-slate-900">
+                                  {report.fas_complaint.applicant_name}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <div>
+                                <span className="font-semibold text-slate-700">Заказчик: </span>
+                                <span className="text-slate-900 font-bold">
+                                  {report.fas_complaint.customer_name}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-700">Извещение №: </span>
+                                <span className="font-mono text-slate-900">
+                                  {report.fas_complaint.purchase_notice_number} • {report.fas_complaint.etp_name}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Эпизоды нарушений */}
+                        <div className="space-y-4">
+                          <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                            <span>Эпизоды нарушений в документации ({report.fas_complaint.episodes?.length || 0})</span>
+                          </h4>
+                          {report.fas_complaint.episodes?.map((ep: any, idx: number) => (
+                            <div key={idx} className="p-5 bg-white rounded-xl border border-red-200 shadow-sm border-l-4 border-l-red-600">
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <h5 className="font-bold text-sm text-slate-900">
+                                  {idx + 1}. {ep.title}
+                                </h5>
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">
+                                  {ep.violation_norm}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-700 mb-2 leading-relaxed">
+                                {ep.legal_reasoning}
+                              </p>
+                              {ep.factual_basis && (
+                                <div className="text-xs text-slate-600 italic bg-slate-50 p-2.5 rounded border border-slate-200">
+                                  📌 Фактические обстоятельства: {ep.factual_basis}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Просительная часть (ПРОШУ) */}
+                        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-sm">
+                          <h4 className="font-bold text-sm tracking-wide text-red-400 uppercase mb-3">
+                            Просительная часть (На основании ст. 99, 105, 106 44-ФЗ ПРОШУ):
+                          </h4>
+                          <ol className="space-y-2 text-xs text-slate-200 list-decimal list-inside leading-relaxed">
+                            {report.fas_complaint.petitum?.map((p: string, pIdx: number) => (
+                              <li key={pIdx} className="pl-1 font-medium">{p}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
+                        <Scale className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+                        <h4 className="font-bold text-slate-800 text-sm">
+                          Критических нарушений для подачи жалобы в ФАС не выявлено
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                          Жалоба формируется автоматически при обнаружении прямых нарушений ст. 33, 34 44-ФЗ (нереалистичные сроки, незаконные штрафы или жесткая заточка под бренд).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 6. ВКЛАДКА: ЭКСПОРТ ОТЧЕТА */}
                 {activeTab === "export" && (
                   <div className="space-y-4">
                     <p className="text-sm text-slate-600">
-                      Выгрузите полный аналитический отчёт со светофором и таблицами для согласования с руководством:
+                      Выгрузите официальные документы, жалобы и аналитические отчёты в формате Word (.docx):
                     </p>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <button
                         onClick={() =>
                           api.exports.downloadReportDocx(
@@ -982,17 +1220,39 @@ export default function DashboardPage() {
                             report.summary.notice_number
                           )
                         }
-                        className="p-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md shadow-sky-200 text-left transition-all flex items-center justify-between"
+                        className="p-5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl shadow-md shadow-sky-200 text-left transition-all flex flex-col justify-between"
                       >
                         <div>
-                          <div className="font-bold text-base flex items-center gap-2">
-                            <Download className="w-5 h-5" />
-                            Полный отчет в Word (.docx)
+                          <div className="font-bold text-sm flex items-center gap-2">
+                            <Download className="w-4 h-4" />
+                            Полный отчет (.docx)
                           </div>
                           <div className="text-xs text-sky-100 mt-1">
-                            Оформленный документ с таблицами, метриками и блоками вердиктов
+                            Таблицы рисков, комплаенс и светофор для руководства
                           </div>
                         </div>
+                        <span className="text-[11px] font-semibold text-sky-200 mt-4">Скачать docx →</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          api.exports.downloadFasComplaintDocx(
+                            auditResult.audit_id,
+                            report.summary.notice_number
+                          )
+                        }
+                        className="p-5 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-md shadow-red-200 text-left transition-all flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="font-bold text-sm flex items-center gap-2">
+                            <Gavel className="w-4 h-4" />
+                            Жалоба в ФАС (.docx)
+                          </div>
+                          <div className="text-xs text-red-100 mt-1">
+                            Официальный документ по ст. 105 44-ФЗ с эпизодами нарушений
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-semibold text-red-200 mt-4">Скачать docx →</span>
                       </button>
 
                       <button
@@ -1002,17 +1262,18 @@ export default function DashboardPage() {
                             report.summary.notice_number
                           )
                         }
-                        className="p-5 bg-white hover:bg-slate-50 text-slate-800 rounded-xl border border-slate-300 text-left transition-all flex items-center justify-between"
+                        className="p-5 bg-white hover:bg-slate-50 text-slate-800 rounded-xl border border-slate-300 text-left transition-all flex flex-col justify-between shadow-sm"
                       >
                         <div>
-                          <div className="font-bold text-base flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-slate-500" />
-                            Отчёт в формате Markdown (.md)
+                          <div className="font-bold text-sm flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-slate-500" />
+                            Отчёт в Markdown (.md)
                           </div>
                           <div className="text-xs text-slate-500 mt-1">
                             Для корпоративных баз знаний, Notion и Obsidian
                           </div>
                         </div>
+                        <span className="text-[11px] font-semibold text-slate-500 mt-4">Скачать md →</span>
                       </button>
                     </div>
                   </div>
@@ -1067,6 +1328,107 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {/* 5. МОДАЛЬНОЕ ОКНО ТАРИФОВ И ПОПОЛНЕНИЯ БАЛАНСА */}
+      {showBillingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+            {/* Заголовок модалки */}
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-sky-600" />
+                  <span>Тарифные планы TenderMed</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Выберите пакет экспертных проверок медицинских закупок.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowBillingModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Тело модалки */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {billingMsg && (
+                <div
+                  className={`p-4 rounded-xl text-xs font-semibold ${
+                    billingMsg.includes("🎉")
+                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      : "bg-red-50 text-red-800 border border-red-200"
+                  }`}
+                >
+                  {billingMsg}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {billingPlans.map((plan: any) => (
+                  <div
+                    key={plan.id}
+                    className={`rounded-2xl p-5 border flex flex-col justify-between transition-all relative ${
+                      plan.is_popular
+                        ? "border-sky-500 ring-2 ring-sky-500/20 bg-sky-50/20 shadow-md"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    {plan.is_popular && (
+                      <span className="absolute -top-3 right-4 bg-sky-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        Популярный
+                      </span>
+                    )}
+
+                    <div>
+                      <h4 className="font-bold text-base text-slate-900">{plan.name}</h4>
+                      <p className="text-xs text-slate-500 mt-1 min-h-[32px]">{plan.description}</p>
+
+                      <div className="my-4">
+                        <div className="text-2xl font-black text-slate-900">
+                          {plan.price_rub.toLocaleString("ru-RU")} ₽
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-medium">
+                          {plan.credits} проверок • {plan.price_per_audit} ₽ / проверка
+                        </div>
+                      </div>
+
+                      <ul className="space-y-2 text-xs text-slate-600 border-t border-slate-100 pt-3 mb-5">
+                        {plan.features?.map((f: string, fIdx: number) => (
+                          <li key={fIdx} className="flex items-start gap-2">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      disabled={billingLoading}
+                      onClick={() => handleBuyPlan(plan.id)}
+                      className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer ${
+                        plan.is_popular
+                          ? "bg-sky-600 hover:bg-sky-700 text-white"
+                          : "bg-slate-900 hover:bg-slate-800 text-white"
+                      }`}
+                    >
+                      {billingLoading
+                        ? "Оформление..."
+                        : `Выбрать за ${plan.price_rub.toLocaleString("ru-RU")} ₽`}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-[11px] text-slate-400 text-center">
+                🔒 Безопасная тестовая оплата • Баланс проверок начисляется моментально • Все закрывающие документы
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

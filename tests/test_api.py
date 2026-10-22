@@ -15,35 +15,7 @@ from app.models.schemas import (
 )
 from app.db.models import TenderAudit, User
 
-# Тестовая БД SQLite в памяти
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+from tests.conftest import TestSessionLocal as TestingSessionLocal, client
 
 
 def test_health_check():
@@ -86,6 +58,37 @@ def test_auth_register_and_login():
     me_data = me_resp.json()
     assert me_data["email"] == "doctor@medtech-supplier.ru"
     assert me_data["available_credits"] == 3
+
+
+def test_disposable_email_rejection():
+    # 1. Попытка регистрации через temp-mail.org
+    resp = client.post("/api/auth/register", json={
+        "email": "attacker@temp-mail.org",
+        "password": "secretpassword123",
+    })
+    assert resp.status_code == 400
+    assert "разрешена только" in resp.json()["detail"]
+
+    # 2. Попытка регистрации через noname домен
+    resp2 = client.post("/api/auth/register", json={
+        "email": "freecredits@randomxyz123.com",
+        "password": "secretpassword123",
+    })
+    assert resp2.status_code == 400
+
+    # 3. Попытка регистрации через vebux
+    resp3 = client.post("/api/auth/register", json={
+        "email": "bot@vebux.net",
+        "password": "secretpassword123",
+    })
+    assert resp3.status_code == 400
+
+    # 4. Успешная регистрация через yandex.ru
+    resp4 = client.post("/api/auth/register", json={
+        "email": "legit-supplier@yandex.ru",
+        "password": "secretpassword123",
+    })
+    assert resp4.status_code == 200
 
 
 def test_unauthorized_access():
@@ -167,3 +170,8 @@ def test_audit_history_and_export():
     all_cr_resp = client.get(f"/api/exports/tenders/{audit_id}/clarifications.docx", headers={"Authorization": f"Bearer {token}"})
     assert all_cr_resp.status_code == 200
     assert len(all_cr_resp.content) > 0
+
+    # 5. Экспорт жалобы в ФАС в DOCX
+    fas_resp = client.get(f"/api/exports/tenders/{audit_id}/fas-complaint.docx", headers={"Authorization": f"Bearer {token}"})
+    assert fas_resp.status_code == 200
+    assert len(fas_resp.content) > 0

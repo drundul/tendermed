@@ -88,6 +88,11 @@ class LLMService:
                 report.analysis_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 report.model_used = f"OpenAI {effective_model}"
                 report.is_mock = False
+                try:
+                    from app.services.fas_generator import FASComplaintGenerator
+                    report.fas_complaint = FASComplaintGenerator.generate(report)
+                except Exception:
+                    pass
                 return report
             else:
                 raise RuntimeError("Модель OpenAI не вернула структурированный ответ.")
@@ -225,3 +230,9 @@ class LLMService:
             analysis_timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             model_used="Эталонный образец (Демо-режим)",
         )
+        try:
+            from app.services.fas_generator import FASComplaintGenerator
+            mock_rep.fas_complaint = FASComplaintGenerator.generate(mock_rep)
+        except Exception:
+            pass
+        return mock_rep

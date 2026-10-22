@@ -115,3 +115,34 @@ def export_markdown_report(
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
+
+
+@router.get("/tenders/{audit_id}/fas-complaint.docx")
+def export_docx_fas_complaint(
+    audit_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Скачивание официальной жалобы в ФАС России (ст. 105 44-ФЗ) в формате Word (.docx)."""
+    report = _get_audit_and_report(audit_id, current_user.id, db)
+
+    complaint = report.fas_complaint
+    if not complaint:
+        from app.services.fas_generator import FASComplaintGenerator
+        complaint = FASComplaintGenerator.generate(
+            report,
+            applicant_name=current_user.company_name or "Участник закупки",
+            applicant_contacts=current_user.email,
+        )
+
+    docx_bytes = ReportExporter.export_fas_complaint_docx(complaint)
+
+    filename = f"Zhaloba_FAS_{report.summary.notice_number or '44FZ'}.docx"
+    encoded_filename = quote(filename)
+
+    return Response(
+        content=docx_bytes,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
+    )
+

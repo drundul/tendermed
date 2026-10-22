@@ -76,7 +76,7 @@ class HeuristicAnalyzer:
             f"Все данные соответствуют официальным файлам ЕИС."
         )
 
-        return FullAnalysisReport(
+        report = FullAnalysisReport(
             verdict=verdict,
             risk_score=risk_score,
             verdict_summary=verdict_summary,
@@ -89,6 +89,13 @@ class HeuristicAnalyzer:
             model_used="TenderMed Heuristic Engine (44-ФЗ Ruleset)",
             analysis_timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
+        try:
+            from app.services.fas_generator import FASComplaintGenerator
+            report.fas_complaint = FASComplaintGenerator.generate(report)
+        except Exception:
+            report.fas_complaint = None
+
+        return report
 
     @classmethod
     def _extract_summary(
@@ -210,6 +217,25 @@ class HeuristicAnalyzer:
                         "Направить запрос на разъяснение положений извещения с требованием увеличить срок поставки до разумного "
                         "(не менее 20-30 календарных дней)."
                     ),
+                )
+            )
+
+        # Проверка срочной поставки за 24 часа
+        urgent_hours_match = re.search(r"(?:не позднее|в течение)\s*(\d{1,2})\s*(?:двадцати\s*четырех\s*)?час\w*", context, re.IGNORECASE)
+        if urgent_hours_match and int(urgent_hours_match.group(1)) <= 48:
+            risks.append(
+                RiskItem(
+                    category=RiskCategory.TIMING,
+                    severity=RiskSeverity.HIGH,
+                    title=f"Сверхсрочная поставка ({urgent_hours_match.group(1)} ч по заявке)",
+                    description=(
+                        f"Установлен нереалистичный срок экстренной поставки — {urgent_hours_match.group(1)} часов по заявке заказчика "
+                        "(включая ночное время и выходные дни). Для высокотехнологичных медицинских изделий это непреодолимый барьер для любого поставщика "
+                        "без регионального склада в данном городе и явный признак ограничения конкуренции."
+                    ),
+                    quote=urgent_hours_match.group(0),
+                    law_reference="ч. 1, 2 ст. 33 44-ФЗ, ст. 17 Федерального закона № 135-ФЗ «О защите конкуренции»",
+                    recommendation="Направить запрос на разъяснение с требованием исключить условие поставки за 24 часа либо увеличить срок до разумного.",
                 )
             )
         elif has_stages:

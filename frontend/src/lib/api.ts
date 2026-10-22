@@ -227,9 +227,57 @@ export const api = {
       return this.downloadFile(`/api/exports/tenders/${auditId}/clarification/${index}.docx`, filename);
     },
 
+    async downloadFasComplaintDocx(auditId: number, noticeNumber?: string) {
+      const filename = `Zhaloba_FAS_${noticeNumber || "44FZ"}.docx`;
+      return this.downloadFile(`/api/exports/tenders/${auditId}/fas-complaint.docx`, filename);
+    },
+
     async downloadReportMd(auditId: number, noticeNumber?: string) {
       const filename = `Tender_Audit_${noticeNumber || "Report"}.md`;
       return this.downloadFile(`/api/exports/tenders/${auditId}/report.md`, filename);
+    },
+  },
+
+  billing: {
+    async getPlans() {
+      return request<{
+        plans: Array<{
+          id: string;
+          name: string;
+          price_rub: number;
+          credits: number;
+          price_per_audit: number;
+          description: string;
+          features: string[];
+          is_popular?: boolean;
+        }>;
+      }>("/api/billing/plans");
+    },
+
+    async checkout(planId: string) {
+      return request<{
+        success: boolean;
+        message: string;
+        added_credits: number;
+        new_total_credits: number;
+        transaction_id: number;
+      }>("/api/billing/checkout", {
+        method: "POST",
+        body: JSON.stringify({ plan_id: planId }),
+      });
+    },
+
+    async getTransactions() {
+      return request<
+        Array<{
+          id: number;
+          plan_id: string;
+          amount_rub: number;
+          credits_added: number;
+          status: string;
+          created_at: string;
+        }>
+      >("/api/billing/transactions");
     },
   },
 };

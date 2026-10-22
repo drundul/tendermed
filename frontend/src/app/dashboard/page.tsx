@@ -88,7 +88,13 @@ export default function DashboardPage() {
 
     api.auth
       .getMe()
-      .then((data) => setUser(data))
+      .then((data) => {
+        setUser(data);
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.get("openBilling") || searchParams.get("pricing") === "true") {
+          openBillingModal();
+        }
+      })
       .catch(() => {
         api.auth.logout();
         router.push("/login");
@@ -181,7 +187,8 @@ export default function DashboardPage() {
     setBillingMsg("");
     try {
       const res = await api.billing.getPlans();
-      setBillingPlans(res.plans);
+      const list = res?.plans || (Array.isArray(res) ? res : []);
+      setBillingPlans(list);
     } catch {
       setBillingPlans([
         {
@@ -1392,7 +1399,7 @@ export default function DashboardPage() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {billingPlans.map((plan: any) => (
+                {(billingPlans || []).map((plan: any) => (
                   <div
                     key={plan.id}
                     className={`rounded-2xl p-5 border flex flex-col justify-between transition-all relative ${

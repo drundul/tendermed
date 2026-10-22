@@ -186,6 +186,18 @@ export const api = {
         report: any;
       }>(`/api/tenders/${auditId}`);
     },
+
+    async getPublicDemoAudit() {
+      return request<{
+        id: number;
+        notice_number?: string;
+        source_url?: string;
+        purchase_subject?: string;
+        customer_name?: string;
+        created_at: string;
+        report: any;
+      }>("/api/tenders/public/demo-audit");
+    },
   },
 
   exports: {
@@ -210,6 +222,10 @@ export const api = {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+    },
+
+    async downloadDemoReportDocx() {
+      return this.downloadFile("/api/exports/public/demo-report.docx", "Demo_Tender_Audit_0373100015826000556.docx");
     },
 
     async downloadReportDocx(auditId: number, noticeNumber?: string) {
@@ -240,18 +256,21 @@ export const api = {
 
   billing: {
     async getPlans() {
-      return request<{
-        plans: Array<{
-          id: string;
-          name: string;
-          price_rub: number;
-          credits: number;
-          price_per_audit: number;
-          description: string;
-          features: string[];
-          is_popular?: boolean;
-        }>;
-      }>("/api/billing/plans");
+      const data = await request<any>("/api/billing/plans");
+      const rawList = Array.isArray(data) ? data : (data?.plans || []);
+      return {
+        plans: rawList.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          price_rub: p.price_rubles ?? p.price_rub ?? 0,
+          credits: p.credits_count ?? p.credits ?? 0,
+          price_per_audit: p.price_per_audit,
+          description: p.tagline ?? p.description ?? "",
+          badge: p.badge,
+          is_popular: p.popular ?? p.is_popular ?? false,
+          features: p.features || [],
+        })),
+      };
     },
 
     async checkout(planId: string) {

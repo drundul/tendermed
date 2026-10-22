@@ -224,3 +224,28 @@ def get_audit_detail(
         "created_at": audit.created_at.isoformat() if audit.created_at else "",
         "report": json.loads(audit.report_json),
     }
+
+
+@router.get("/public/demo-audit")
+def get_public_demo_audit(db: Session = Depends(get_db)):
+    """Публичный демонстрационный отчет сложной медтехники (доступен без логина)."""
+    audit = (
+        db.query(TenderAudit)
+        .filter(TenderAudit.notice_number == "0373100015826000556")
+        .order_by(TenderAudit.id.desc())
+        .first()
+    )
+    if not audit:
+        audit = db.query(TenderAudit).order_by(TenderAudit.id.desc()).first()
+    if not audit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Демо-отчет не найден")
+
+    return {
+        "id": audit.id,
+        "notice_number": audit.notice_number,
+        "source_url": audit.source_url,
+        "purchase_subject": audit.purchase_subject,
+        "customer_name": audit.customer_name,
+        "created_at": audit.created_at.isoformat() if audit.created_at else "",
+        "report": json.loads(audit.report_json),
+    }

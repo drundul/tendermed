@@ -146,3 +146,31 @@ def export_docx_fas_complaint(
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
 
+
+@router.get("/public/demo-report.docx")
+def export_demo_report_docx(db: Session = Depends(get_db)):
+    """Публичное скачивание демонстрационного экспертного заключения в Word (.docx)."""
+    audit = (
+        db.query(TenderAudit)
+        .filter(TenderAudit.notice_number == "0373100015826000556")
+        .order_by(TenderAudit.id.desc())
+        .first()
+    )
+    if not audit:
+        audit = db.query(TenderAudit).order_by(TenderAudit.id.desc()).first()
+    if not audit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Демо-отчет не найден")
+
+    data = json.loads(audit.report_json)
+    report = FullAnalysisReport.model_validate(data)
+    docx_bytes = ReportExporter.to_docx_report(report)
+
+    filename = f"Demo_Tender_Audit_{report.summary.notice_number or '0373100015826000556'}.docx"
+    encoded_filename = quote(filename)
+
+    return Response(
+        content=docx_bytes,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
+    )
+
